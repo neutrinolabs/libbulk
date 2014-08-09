@@ -36,8 +36,8 @@ mppc_compress_destroy(void *handle)
 
 /******************************************************************************/
 int
-mppc_compress(void *handle, char *cdata, int *cdata_bytes,
-              char *data, int data_bytes)
+mppc_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
+              const char *data, int data_bytes)
 {
     return 0;
 }
