@@ -11,7 +11,7 @@ AM_CFLAGS = \
 
 lib_LTLIBRARIES = libbulkmppccompress.la libbulkrdp8decompress.la libbulkrdp8compress.la
 
-# MPPC
+# MPPC compress
 libbulkmppccompress_la_LDFLAGS =
 
 libbulkmppccompress_ladir = $(moduledir)
