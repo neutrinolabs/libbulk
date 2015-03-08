@@ -103,7 +103,7 @@ struct bulk_rdp8
     const byte *m_pbInputEnd;         /* ptr past end of input */
 
     /* input bit stream */
-    uint32 m_cBitsRemaining;          /* # bits input remaining8 */
+    uint32 m_cBitsRemaining;          /* # bits input remaining */
     uint32 m_BitsCurrent;             /* remainder of most-recent byte */
     uint32 m_cBitsCurrent;            /* number of bits in m_BitsCurrent */
 
@@ -351,11 +351,11 @@ OutputFromSegment(struct bulk_rdp8 *bulk, const byte *pbSegment,
 {
     if (pbSegment[0] & NL_PACKET_COMPRESSED)
     {
-       return OutputFromCompressed(bulk, pbSegment + 1, cbSegment - 1);
+        return OutputFromCompressed(bulk, pbSegment + 1, cbSegment - 1);
     }
     else
     {
-       return OutputFromNotCompressed(bulk, pbSegment + 1, cbSegment - 1);
+        return OutputFromNotCompressed(bulk, pbSegment + 1, cbSegment - 1);
     }
 }
 
@@ -417,6 +417,10 @@ rdp8_decompress(void *handle, const char *cdata, int cdata_bytes, int flags,
             memcpy(pConcatenated, bulk->m_outputBuffer, bulk->m_outputCount);
             pConcatenated += bulk->m_outputCount;
         }
+    }
+    else
+    {
+        return 1;
     }
     return 0;
 }
