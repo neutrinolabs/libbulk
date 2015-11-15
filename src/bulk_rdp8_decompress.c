@@ -176,6 +176,82 @@ GetBits(struct bulk_rdp8 *bulk, uint32 bitCount)
 
 /*****************************************************************************/
 static int
+OutputFromCompressedOutputLiteral(struct bulk_rdp8 *bulk, byte c)
+{
+    /* Add one byte 'c' to output and history */
+    bulk->m_historyBuffer[bulk->m_historyIndex] = c;
+    if (++(bulk->m_historyIndex) == sizeof(bulk->m_historyBuffer))
+    {
+        bulk->m_historyIndex = 0;
+    }
+    bulk->m_outputBuffer[bulk->m_outputCount++] = c;
+    return 0;
+}
+
+/*****************************************************************************/
+static int
+OutputFromCompressedOutputMatch(struct bulk_rdp8 *bulk, uint32 count,
+                                uint32 distance)
+{
+    uint32 prevIndex;
+    byte c;
+
+    /* Add 'count' bytes from 'distance' back in history. */
+    /* Output these bytes again, and add to history again. */
+    prevIndex = bulk->m_historyIndex + 
+                sizeof(bulk->m_historyBuffer) - distance;
+    prevIndex = prevIndex % sizeof(bulk->m_historyBuffer);
+
+    /* n.b. memcpy or movsd, for example, will not work here. */
+    /* Overlapping matches must replicate.  movsb might work. */
+    while (count--)
+    {
+        c = bulk->m_historyBuffer[prevIndex];
+        if (++prevIndex == sizeof(bulk->m_historyBuffer))
+        {
+            prevIndex = 0;
+        }
+
+        bulk->m_historyBuffer[bulk->m_historyIndex] = c;
+        if (++(bulk->m_historyIndex) == sizeof(bulk->m_historyBuffer))
+        {
+            bulk->m_historyIndex = 0;
+        }
+
+        bulk->m_outputBuffer[bulk->m_outputCount] = c;
+        ++(bulk->m_outputCount);
+    }
+
+    return 0;
+}
+
+/*****************************************************************************/
+static int
+OutputFromCompressedOutputUnencoded(struct bulk_rdp8 *bulk, uint32 count)
+{
+    byte c;
+
+    /* Copy 'count' bytes from stream input to output */
+    /* and add to history. */
+    while (count--)
+    {
+        c = *(bulk->m_pbInputCurrent++);
+        bulk->m_cBitsRemaining -= 8;
+
+        bulk->m_historyBuffer[bulk->m_historyIndex] = c;
+        if (++(bulk->m_historyIndex) == sizeof(bulk->m_historyBuffer))
+        {
+            bulk->m_historyIndex = 0;
+        }
+
+        bulk->m_outputBuffer[bulk->m_outputCount] = c;
+        ++(bulk->m_outputCount);
+    }
+    return 0;
+}
+
+/*****************************************************************************/
+static int
 OutputFromCompressed(struct bulk_rdp8 *bulk, const byte *pbEncoded,
                      int cbEncoded)
 {
@@ -186,7 +262,7 @@ OutputFromCompressed(struct bulk_rdp8 *bulk, const byte *pbEncoded,
     uint32 distance;
     int opIndex;
     int extra;
-    uint32 prevIndex;
+    int cont;
 
     bulk->m_outputCount = 0;
     bulk->m_pbInputCurrent = pbEncoded;
@@ -203,7 +279,7 @@ OutputFromCompressed(struct bulk_rdp8 *bulk, const byte *pbEncoded,
 
         /* Scan the token table, considering more bits as needed,
            until the resulting token is found. */
-
+        cont = 0;
         for (opIndex = 0; g_tokenTable[opIndex].prefixLength != 0; opIndex++)
         {
             /* get more bits if needed */
@@ -219,7 +295,9 @@ OutputFromCompressed(struct bulk_rdp8 *bulk, const byte *pbEncoded,
                 {
                     c = (byte)(g_tokenTable[opIndex].valueBase +
                         GetBits(bulk, g_tokenTable[opIndex].valueBits));
-                    goto output_literal;
+                    OutputFromCompressedOutputLiteral(bulk, c);
+                    cont = 1;
+                    break;
                 }
                 else
                 {
@@ -243,7 +321,9 @@ OutputFromCompressed(struct bulk_rdp8 *bulk, const byte *pbEncoded,
 
                             count += GetBits(bulk, extra);
                         }
-                        goto output_match;
+                        OutputFromCompressedOutputMatch(bulk, count, distance);
+                        cont = 1;
+                        break;
                     }
                     else /* match distance == 0 is special case */
                     {
@@ -253,72 +333,17 @@ OutputFromCompressed(struct bulk_rdp8 *bulk, const byte *pbEncoded,
                         bulk->m_cBitsRemaining -= bulk->m_cBitsCurrent;
                         bulk->m_cBitsCurrent = 0;
                         bulk->m_BitsCurrent = 0;
-                        goto output_unencoded;
+                        OutputFromCompressedOutputUnencoded(bulk, count);
+                        cont = 1;
+                        break;
                     }
                 }
             }
         }
-        break;
-
-output_literal:
-
-        /* Add one byte 'c' to output and history */
-        bulk->m_historyBuffer[bulk->m_historyIndex] = c;
-        if (++(bulk->m_historyIndex) == sizeof(bulk->m_historyBuffer))
+        if (cont == 0)
         {
-            bulk->m_historyIndex = 0;
+            break;
         }
-        bulk->m_outputBuffer[bulk->m_outputCount++] = c;
-        continue;
-
-output_match:
-
-        /* Add 'count' bytes from 'distance' back in history. */
-        /* Output these bytes again, and add to history again. */
-        prevIndex = bulk->m_historyIndex + 
-                    sizeof(bulk->m_historyBuffer) - distance;
-        prevIndex = prevIndex % sizeof(bulk->m_historyBuffer);
-
-        /* n.b. memcpy or movsd, for example, will not work here. */
-        /* Overlapping matches must replicate.  movsb might work. */
-        while (count--)
-        {
-            c = bulk->m_historyBuffer[prevIndex];
-            if (++prevIndex == sizeof(bulk->m_historyBuffer))
-            {
-                prevIndex = 0;
-            }
-
-            bulk->m_historyBuffer[bulk->m_historyIndex] = c;
-            if (++(bulk->m_historyIndex) == sizeof(bulk->m_historyBuffer))
-            {
-                bulk->m_historyIndex = 0;
-            }
-
-            bulk->m_outputBuffer[bulk->m_outputCount] = c;
-            ++(bulk->m_outputCount);
-        }
-        continue;
-
-output_unencoded:
-
-        /* Copy 'count' bytes from stream input to output */
-        /* and add to history. */
-        while (count--)
-        {
-            c = *(bulk->m_pbInputCurrent++);
-            bulk->m_cBitsRemaining -= 8;
-
-            bulk->m_historyBuffer[bulk->m_historyIndex] = c;
-            if (++(bulk->m_historyIndex) == sizeof(bulk->m_historyBuffer))
-            {
-                bulk->m_historyIndex = 0;
-            }
-
-            bulk->m_outputBuffer[bulk->m_outputCount] = c;
-            ++(bulk->m_outputCount);
-        }
-        continue;
     }
     return 0;
 }

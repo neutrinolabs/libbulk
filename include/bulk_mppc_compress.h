@@ -16,10 +16,10 @@
  * limitations under the License.
  */
 
-#ifndef __BULK_MPPC_COMPRESS_H
-#define __BULK_MPPC_COMPRESS_H
+#ifndef __NL_BULK_MPPC_COMPRESS_H
+#define __NL_BULK_MPPC_COMPRESS_H
 
-/* flags for mppc_compress_create */
+/* protocol_type for mppc_compress_create */
 #define NL_MPPC_FLAGS_RDP40 0x00
 #define NL_MPPC_FLAGS_RDP50 0x01
 #define NL_MPPC_FLAGS_RDP60 0x02
@@ -36,7 +36,7 @@
 #define NL_COMPRESSION_TYPE_MASK   0x0F
 
 void *
-mppc_compress_create(int flags);
+mppc_compress_create(int protocol_type);
 int
 mppc_compress_destroy(void *handle);
 int
