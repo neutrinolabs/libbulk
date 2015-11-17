@@ -26,6 +26,47 @@
 #define NL_RDP_40_HIST_BUF_LEN (1024 * 8) /* RDP 4.0 uses 8K history buf */
 #define NL_RDP_50_HIST_BUF_LEN (1024 * 64) /* RDP 5.0 uses 64K history buf */
 
+#define CRC_INIT 0xFFFF
+#define CRC(_crcval, _newchar) _crcval = \
+    ((_crcval) >> 8) ^ g_crc_table[((_crcval) ^ (_newchar)) & 0x00ff]
+
+/* CRC16 defs */
+static const unsigned short g_crc_table[256] =
+{
+    0x0000, 0x1189, 0x2312, 0x329b, 0x4624, 0x57ad, 0x6536, 0x74bf,
+    0x8c48, 0x9dc1, 0xaf5a, 0xbed3, 0xca6c, 0xdbe5, 0xe97e, 0xf8f7,
+    0x1081, 0x0108, 0x3393, 0x221a, 0x56a5, 0x472c, 0x75b7, 0x643e,
+    0x9cc9, 0x8d40, 0xbfdb, 0xae52, 0xdaed, 0xcb64, 0xf9ff, 0xe876,
+    0x2102, 0x308b, 0x0210, 0x1399, 0x6726, 0x76af, 0x4434, 0x55bd,
+    0xad4a, 0xbcc3, 0x8e58, 0x9fd1, 0xeb6e, 0xfae7, 0xc87c, 0xd9f5,
+    0x3183, 0x200a, 0x1291, 0x0318, 0x77a7, 0x662e, 0x54b5, 0x453c,
+    0xbdcb, 0xac42, 0x9ed9, 0x8f50, 0xfbef, 0xea66, 0xd8fd, 0xc974,
+    0x4204, 0x538d, 0x6116, 0x709f, 0x0420, 0x15a9, 0x2732, 0x36bb,
+    0xce4c, 0xdfc5, 0xed5e, 0xfcd7, 0x8868, 0x99e1, 0xab7a, 0xbaf3,
+    0x5285, 0x430c, 0x7197, 0x601e, 0x14a1, 0x0528, 0x37b3, 0x263a,
+    0xdecd, 0xcf44, 0xfddf, 0xec56, 0x98e9, 0x8960, 0xbbfb, 0xaa72,
+    0x6306, 0x728f, 0x4014, 0x519d, 0x2522, 0x34ab, 0x0630, 0x17b9,
+    0xef4e, 0xfec7, 0xcc5c, 0xddd5, 0xa96a, 0xb8e3, 0x8a78, 0x9bf1,
+    0x7387, 0x620e, 0x5095, 0x411c, 0x35a3, 0x242a, 0x16b1, 0x0738,
+    0xffcf, 0xee46, 0xdcdd, 0xcd54, 0xb9eb, 0xa862, 0x9af9, 0x8b70,
+    0x8408, 0x9581, 0xa71a, 0xb693, 0xc22c, 0xd3a5, 0xe13e, 0xf0b7,
+    0x0840, 0x19c9, 0x2b52, 0x3adb, 0x4e64, 0x5fed, 0x6d76, 0x7cff,
+    0x9489, 0x8500, 0xb79b, 0xa612, 0xd2ad, 0xc324, 0xf1bf, 0xe036,
+    0x18c1, 0x0948, 0x3bd3, 0x2a5a, 0x5ee5, 0x4f6c, 0x7df7, 0x6c7e,
+    0xa50a, 0xb483, 0x8618, 0x9791, 0xe32e, 0xf2a7, 0xc03c, 0xd1b5,
+    0x2942, 0x38cb, 0x0a50, 0x1bd9, 0x6f66, 0x7eef, 0x4c74, 0x5dfd,
+    0xb58b, 0xa402, 0x9699, 0x8710, 0xf3af, 0xe226, 0xd0bd, 0xc134,
+    0x39c3, 0x284a, 0x1ad1, 0x0b58, 0x7fe7, 0x6e6e, 0x5cf5, 0x4d7c,
+    0xc60c, 0xd785, 0xe51e, 0xf497, 0x8028, 0x91a1, 0xa33a, 0xb2b3,
+    0x4a44, 0x5bcd, 0x6956, 0x78df, 0x0c60, 0x1de9, 0x2f72, 0x3efb,
+    0xd68d, 0xc704, 0xf59f, 0xe416, 0x90a9, 0x8120, 0xb3bb, 0xa232,
+    0x5ac5, 0x4b4c, 0x79d7, 0x685e, 0x1ce1, 0x0d68, 0x3ff3, 0x2e7a,
+    0xe70e, 0xf687, 0xc41c, 0xd595, 0xa12a, 0xb0a3, 0x8238, 0x93b1,
+    0x6b46, 0x7acf, 0x4854, 0x59dd, 0x2d62, 0x3ceb, 0x0e70, 0x1ff9,
+    0xf78f, 0xe606, 0xd49d, 0xc514, 0xb1ab, 0xa022, 0x92b9, 0x8330,
+    0x7bc7, 0x6a4e, 0x58d5, 0x495c, 0x3de3, 0x2c6a, 0x1ef1, 0x0f78
+};
+
 struct bulk_mppc
 {
     int    protocol_type;    /* NL_MPPC_FLAGS_RDP40, NL_MPPC_FLAGS_RDP50 etc */
@@ -40,7 +81,7 @@ struct bulk_mppc
                                 NL_PACKET_FLUSHED etc */
     int    flagsHold;
     int    first_pkt;        /* this is the first pkt passing through enc */
-    short *hash_table;
+    unsigned short *hash_table;
 };
 
 /******************************************************************************/
@@ -113,6 +154,7 @@ mppc_compress_destroy(void *handle)
     free(self->outputBufferPlus);
     free(self->historyBuffer);
     free(self);
+    return 0;
 }
 
 /*****************************************************************************
@@ -452,24 +494,460 @@ do \
 
 /******************************************************************************/
 static int
-mppc_compress_4(struct bulk_mppc *self, char **cdata, int *cdata_bytes,
-                int *flags, const char *data, int data_bytes)
+mppc_compress_4(struct bulk_mppc *self, void **cdata, int *cdata_bytes,
+                int *flags, const void *data, int data_bytes)
 {
     return 0;
 }
 
 /******************************************************************************/
 static int
-mppc_compress_5(struct bulk_mppc *self, char **cdata, int *cdata_bytes,
-                int *flags, const char *data, int data_bytes)
+mppc_compress_5(struct bulk_mppc *self, void **cdata, int *cdata_bytes,
+                int *flags, const void *data, int data_bytes)
 {
-    return 0;
+    char *outputBuffer; /* points to enc->outputBuffer */
+    char *hptr_end; /* points to end of history data */
+    char *historyPointer; /* points to first byte of data in
+                           * historyBuffer */
+    char *hbuf_start; /* points to start of history buffer */
+    char *cptr1;
+    char *cptr2;
+    int opb_index; /* index into outputBuffer */
+    int bits_left; /* unused bits in current byte in outputBuffer */
+    unsigned int copy_offset; /* pattern match starts here... */
+    unsigned int lom; /* ...and matches this many bytes */
+    int last_crc_index; /* don't compute CRC beyond this index */
+    unsigned short *hash_table; /* hash table for pattern matching */
+
+    unsigned int i;
+    unsigned int j;
+    unsigned int k;
+    unsigned int x;
+    unsigned char ldata;
+    unsigned short ldata16;
+    unsigned int historyOffset;
+    unsigned short crc;
+    unsigned int ctr;
+    unsigned int saved_ctr;
+    unsigned int data_end;
+    unsigned char byte_val;
+
+    crc = 0;
+    opb_index = 0;
+    bits_left = 8;
+    copy_offset = 0;
+    hash_table = self->hash_table;
+    hbuf_start = self->historyBuffer;
+    outputBuffer = self->outputBuffer;
+    memset(outputBuffer, 0, data_bytes);
+    self->flags = NL_PACKET_COMPR_TYPE_64K;
+    if ((self->historyOffset + data_bytes) >= self->buf_len - 3)
+    {
+        /* historyBuffer cannot hold data - rewind it */
+        self->historyOffset = 0;
+        memset(hash_table, 0, self->buf_len * 2);
+        memset(self->historyBuffer, 0, self->buf_len);
+        self->flagsHold |= NL_PACKET_AT_FRONT | NL_PACKET_FLUSHED;
+    }
+
+    /* point to next free byte in historyBuffer */
+    historyOffset = self->historyOffset;
+
+    /* add / append new data to historyBuffer */
+    memcpy(&(self->historyBuffer[historyOffset]), data, data_bytes);
+
+    /* point to start of data to be compressed */
+    historyPointer = &(self->historyBuffer[historyOffset]);
+
+    ctr = copy_offset = lom = 0;
+
+    /* if we are at start of history buffer, do not attempt to compress */
+    /* first 2 bytes, because minimum LoM is 3                          */
+    if (historyOffset == 0)
+    {
+        /* encode first two bytes as literals */
+        for (x = 0; x < 2; x++)
+        {
+            ldata = *(historyPointer + x);
+            if (ldata & 0x80)
+            {
+                /* insert encoded literal */
+                insert_2_bits(0x02);
+                ldata &= 0x7f;
+                insert_7_bits(ldata);
+            }
+            else
+            {
+                /* insert literal */
+                insert_8_bits(ldata);
+            }
+        }
+
+        /* store hash for first two entries in historyBuffer */
+        crc = CRC_INIT;
+        byte_val = self->historyBuffer[0];
+        CRC(crc, byte_val);
+        byte_val = self->historyBuffer[1];
+        CRC(crc, byte_val);
+        byte_val = self->historyBuffer[2];
+        CRC(crc, byte_val);
+        hash_table[crc] = 0;
+
+        crc = CRC_INIT;
+        byte_val = self->historyBuffer[1];
+        CRC(crc, byte_val);
+        byte_val = self->historyBuffer[2];
+        CRC(crc, byte_val);
+        byte_val = self->historyBuffer[3];
+        CRC(crc, byte_val);
+        hash_table[crc] = 1;
+
+        /* first two bytes have already been processed */
+        ctr = 2;
+    }
+
+    self->historyOffset += data_bytes;
+
+    /* point to last byte in new data */
+    hptr_end = &(self->historyBuffer[self->historyOffset - 1]);
+
+    /* do not compute CRC beyond this */
+    last_crc_index = self->historyOffset - 3;
+
+    /* do not search for pattern match beyond this */
+    data_end = data_bytes - 2;
+
+    /* start compressing data */
+
+    while (ctr < data_end)
+    {
+        cptr1 = historyPointer + ctr;
+
+        crc = CRC_INIT;
+        byte_val = *cptr1;
+        CRC(crc, byte_val);
+        byte_val = *(cptr1 + 1);
+        CRC(crc, byte_val);
+        byte_val = *(cptr1 + 2);
+        CRC(crc, byte_val);
+
+        /* cptr2 points to start of pattern match */
+        cptr2 = hbuf_start + hash_table[crc];
+        copy_offset = cptr1 - cptr2;
+
+        /* save current entry */
+        hash_table[crc] = cptr1 - hbuf_start;
+
+        /* double check that we have a pattern match */
+        if ((*cptr1 != *cptr2) ||
+            (*(cptr1 + 1) != *(cptr2 + 1)) ||
+            (*(cptr1 + 2) != *(cptr2 + 2)))
+        {
+            /* no match found; encode literal byte */
+            ldata = *cptr1;
+
+            if (ldata < 0x80)
+            {
+                /* literal byte < 0x80 */
+                insert_8_bits(ldata);
+            }
+            else
+            {
+                /* literal byte >= 0x80 */
+                insert_2_bits(0x02);
+                ldata &= 0x7f;
+                insert_7_bits(ldata);
+            }
+            ctr++;
+            continue;
+        }
+
+        /* we have a match - compute Length of Match */
+        cptr1 += 3;
+        cptr2 += 3;
+        lom = 3;
+        while ((cptr1 <= hptr_end) && (*(cptr1++) == *(cptr2++)))
+        {
+            lom++;
+        }
+        saved_ctr = ctr + lom;
+
+        /* compute CRC for matching segment and store in hash table */
+
+        cptr1 = historyPointer + ctr;
+        if (cptr1 + lom > hbuf_start + last_crc_index)
+        {
+            /* we have gone beyond last_crc_index - go back */
+            j = last_crc_index - (cptr1 - hbuf_start);
+        }
+        else
+        {
+            j = lom - 1;
+        }
+        ctr++;
+        for (i = 0; i < j; i++)
+        {
+            cptr1 = historyPointer + ctr;
+
+            /* compute CRC on triplet */
+            crc = CRC_INIT;
+            byte_val = *(cptr1++);
+            CRC(crc, byte_val);
+            byte_val = *(cptr1++);
+            CRC(crc, byte_val);
+            byte_val = *(cptr1++);
+            CRC(crc, byte_val);
+
+            /* save current entry */
+            hash_table[crc] = (cptr1 - 3) - hbuf_start;
+
+            /* point to next triplet */
+            ctr++;
+        }
+        ctr = saved_ctr;
+
+        /* encode copy_offset and insert into output buffer */
+
+        if (copy_offset <= 63) /* (copy_offset >= 0) is always true */
+        {
+            /* insert binary header */
+            ldata = 0x1f;
+            insert_5_bits(ldata);
+
+            /* insert 6 bits of copy_offset */
+            ldata = (char) (copy_offset & 0x3f);
+            insert_6_bits(ldata);
+        }
+        else if ((copy_offset >= 64) && (copy_offset <= 319))
+        {
+            /* insert binary header */
+            ldata = 0x1e;
+            insert_5_bits(ldata);
+
+            /* insert 8 bits of copy offset */
+            ldata = (char) (copy_offset - 64);
+            insert_8_bits(ldata);
+        }
+        else if ((copy_offset >= 320) && (copy_offset <= 2367))
+        {
+            /* insert binary header */
+            ldata = 0x0e;
+            insert_4_bits(ldata);
+
+            /* insert 11 bits of copy offset */
+            ldata16 = copy_offset - 320;;
+            insert_11_bits(ldata16);
+        }
+        else
+        {
+            /* copy_offset is 2368+ */
+
+            /* insert binary header */
+            ldata = 0x06;
+            insert_3_bits(ldata);
+
+            /* insert 16 bits of copy offset */
+            ldata16 = copy_offset - 2368;;
+            insert_16_bits(ldata16);
+        }
+
+        /* encode length of match and insert into output buffer */
+
+        if (lom == 3)
+        {
+            /* binary header is 'zero'; since outputBuffer is zero */
+            /* filled, all we have to do is update bits_left */
+            bits_left--;
+            if (bits_left == 0)
+            {
+                opb_index++;
+                bits_left = 8;
+            }
+        }
+        else if ((lom >= 4) && (lom <= 7))
+        {
+            /* insert binary header */
+            ldata = 0x02;
+            insert_2_bits(ldata);
+
+            /* insert lower 2 bits of LoM */
+            ldata = (char) (lom - 4);
+            insert_2_bits(ldata);
+        }
+        else if ((lom >= 8) && (lom <= 15))
+        {
+            /* insert binary header */
+            ldata = 0x06;
+            insert_3_bits(ldata);
+
+            /* insert lower 3 bits of LoM */
+            ldata = (char) (lom - 8);
+            insert_3_bits(ldata);
+        }
+        else if ((lom >= 16) && (lom <= 31))
+        {
+            /* insert binary header */
+            ldata = 0x0e;
+            insert_4_bits(ldata);
+
+            /* insert lower 4 bits of LoM */
+            ldata = (char) (lom - 16);
+            insert_4_bits(ldata);
+        }
+        else if ((lom >= 32) && (lom <= 63))
+        {
+            /* insert binary header */
+            ldata = 0x1e;
+            insert_5_bits(ldata);
+
+            /* insert lower 5 bits of LoM */
+            ldata = (char) (lom - 32);
+            insert_5_bits(ldata);
+        }
+        else if ((lom >= 64) && (lom <= 127))
+        {
+            /* insert binary header */
+            ldata = 0x3e;
+            insert_6_bits(ldata);
+
+            /* insert lower 6 bits of LoM */
+            ldata = (char) (lom - 64);
+            insert_6_bits(ldata);
+        }
+        else if ((lom >= 128) && (lom <= 255))
+        {
+            /* insert binary header */
+            ldata = 0x7e;
+            insert_7_bits(ldata);
+
+            /* insert lower 7 bits of LoM */
+            ldata = (char) (lom - 128);
+            insert_7_bits(ldata);
+        }
+        else if ((lom >= 256) && (lom <= 511))
+        {
+            /* insert binary header */
+            ldata = 0xfe;
+            insert_8_bits(ldata);
+
+            /* insert lower 8 bits of LoM */
+            ldata = (char) (lom - 256);
+            insert_8_bits(ldata);
+        }
+        else if ((lom >= 512) && (lom <= 1023))
+        {
+            /* insert binary header */
+            ldata16 = 0x1fe;
+            insert_9_bits(ldata16);
+
+            /* insert lower 9 bits of LoM */
+            ldata16 = lom - 512;
+            insert_9_bits(ldata16);
+        }
+        else if ((lom >= 1024) && (lom <= 2047))
+        {
+            /* insert binary header */
+            ldata16 = 0x3fe;
+            insert_10_bits(ldata16);
+
+            /* insert 10 lower bits of LoM */
+            ldata16 = lom - 1024;
+            insert_10_bits(ldata16);
+        }
+        else if ((lom >= 2048) && (lom <= 4095))
+        {
+            /* insert binary header */
+            ldata16 = 0x7fe;
+            insert_11_bits(ldata16);
+
+            /* insert 11 lower bits of LoM */
+            ldata16 = lom - 2048;
+            insert_11_bits(ldata16);
+        }
+        else if ((lom >= 4096) && (lom <= 8191))
+        {
+            /* insert binary header */
+            ldata16 = 0xffe;
+            insert_12_bits(ldata16);
+
+            /* insert 12 lower bits of LoM */
+            ldata16 = lom - 4096;
+            insert_12_bits(ldata16);
+        }
+        else if ((lom >= 8192) && (lom <= 16383))
+        {
+            /* insert binary header */
+            ldata16 = 0x1ffe;
+            insert_13_bits(ldata16);
+
+            /* insert 13 lower bits of LoM */
+            ldata16 = lom - 8192;
+            insert_13_bits(ldata16);
+        }
+        else if ((lom >= 16384) && (lom <= 32767))
+        {
+            /* insert binary header */
+            ldata16 = 0x3ffe;
+            insert_14_bits(ldata16);
+
+            /* insert 14 lower bits of LoM */
+            ldata16 = lom - 16384;
+            insert_14_bits(ldata16);
+        }
+        else if ((lom >= 32768) && (lom <= 65535))
+        {
+            /* insert binary header */
+            ldata16 = 0x7ffe;
+            insert_15_bits(ldata16);
+            /* insert 15 lower bits of LoM */
+            ldata16 = lom - 32768;
+            insert_15_bits(ldata16);
+        }
+    } /* end while (ctr < data_end) */
+    /* add remaining data to the output */
+    while (data_bytes - ctr > 0)
+    {
+        ldata = ((unsigned char*)data)[ctr];
+        if (ldata < 0x80)
+        {
+            /* literal byte < 0x80 */
+            insert_8_bits(ldata);
+        }
+        else
+        {
+            /* literal byte >= 0x80 */
+            insert_2_bits(0x02);
+            ldata &= 0x7f;
+            insert_7_bits(ldata);
+        }
+        ctr++;
+    }
+    /* if bits_left != 8, increment opb_index, which is zero indexed */
+    if (bits_left != 8)
+    {
+        opb_index++;
+    }
+    if (opb_index > data_bytes)
+    {
+        /* compressed data longer than uncompressed data */
+        /* give up */
+        self->historyOffset = 0;
+        memset(hash_table, 0, self->buf_len * 2);
+        memset(self->historyBuffer, 0, self->buf_len);
+        self->flagsHold |= NL_PACKET_AT_FRONT | NL_PACKET_FLUSHED;
+        return 0;
+    }
+    self->flags |= NL_PACKET_COMPRESSED;
+    self->bytes_in_opb = opb_index;
+    self->flags |= self->flagsHold;
+    self->flagsHold = 0;
+    return 1;
 }
 
 /******************************************************************************/
 int
-mppc_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
-              const char *data, int data_bytes)
+mppc_compress(void *handle, void **cdata, int *cdata_bytes, int *flags,
+              const void *data, int data_bytes)
 {
     struct bulk_mppc *self;
 

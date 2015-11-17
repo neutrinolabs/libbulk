@@ -40,7 +40,7 @@ mppc_compress_create(int protocol_type);
 int
 mppc_compress_destroy(void *handle);
 int
-mppc_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
-              const char *data, int data_bytes);
+mppc_compress(void *handle, void **cdata, int *cdata_bytes, int *flags,
+              const void *data, int data_bytes);
 
 #endif
