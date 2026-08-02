@@ -2,7 +2,7 @@
  * MPPC bulk compressor
  *
  * Copyright 2012-2015 Laxmikant Rashinkar <LK.Rashinkar@gmail.com>
- * Copyright 2012-2015 Jay Sorg <jay.sorg@gmail.com>
+ * Copyright 2012-2026 Jay Sorg <jay.sorg@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,8 +23,8 @@
 
 #include <bulk_mppc_compress.h>
 
-#define NL_RDP_40_HIST_BUF_LEN (1024 * 8) /* RDP 4.0 uses 8K history buf */
-#define NL_RDP_50_HIST_BUF_LEN (1024 * 64) /* RDP 5.0 uses 64K history buf */
+#define RDP_40_HIST_BUF_LEN (1024 * 8) /* RDP 4.0 uses 8K history buf */
+#define RDP_50_HIST_BUF_LEN (1024 * 64) /* RDP 5.0 uses 64K history buf */
 
 #define CRC_INIT 0xFFFF
 #define CRC(_crcval, _newchar) _crcval = \
@@ -69,7 +69,7 @@ static const unsigned short g_crc_table[256] =
 
 struct bulk_mppc
 {
-    int    protocol_type;    /* NL_MPPC_FLAGS_RDP40, NL_MPPC_FLAGS_RDP50 etc */
+    int    protocol_type;    /* MPPC_FLAGS_RDP40, MPPC_FLAGS_RDP50 etc */
     int    pad0;
     char  *historyBuffer;    /* contains uncompressed data */
     char  *outputBuffer;     /* contains compressed data */
@@ -77,8 +77,8 @@ struct bulk_mppc
     int    historyOffset;    /* next free slot in historyBuffer */
     int    buf_len;          /* length of historyBuffer, protocol dependant */
     int    bytes_in_opb;     /* compressed bytes available in outputBuffer */
-    int    flags;            /* NL_PACKET_COMPRESSED, NL_PACKET_AT_FRONT,
-                                NL_PACKET_FLUSHED etc */
+    int    flags;            /* PACKET_COMPRESSED, PACKET_AT_FRONT,
+                                PACKET_FLUSHED etc */
     int    flagsHold;
     int    first_pkt;        /* this is the first pkt passing through enc */
     unsigned short *hash_table;
@@ -90,44 +90,41 @@ mppc_compress_create(int protocol_type)
 {
     struct bulk_mppc *self;
 
-    self = (struct bulk_mppc *) malloc(sizeof(struct bulk_mppc));
+    self = (struct bulk_mppc *) calloc(sizeof(struct bulk_mppc), 1);
     if (self == NULL)
     {
         return NULL;
     }
-    memset(self, 0, sizeof(struct bulk_mppc));
     switch (protocol_type)
     {
-        case NL_MPPC_FLAGS_RDP40:
-            self->protocol_type = NL_MPPC_FLAGS_RDP40;
-            self->buf_len = NL_RDP_40_HIST_BUF_LEN;
+        case MPPC_FLAGS_RDP40:
+            self->protocol_type = MPPC_FLAGS_RDP40;
+            self->buf_len = RDP_40_HIST_BUF_LEN;
             break;
-        case NL_MPPC_FLAGS_RDP50:
-            self->protocol_type = NL_MPPC_FLAGS_RDP50;
-            self->buf_len = NL_RDP_50_HIST_BUF_LEN;
+        case MPPC_FLAGS_RDP50:
+            self->protocol_type = MPPC_FLAGS_RDP50;
+            self->buf_len = RDP_50_HIST_BUF_LEN;
             break;
         default:
             free(self);
             return NULL;
     }
-    self->flagsHold = NL_PACKET_AT_FRONT;
-    self->historyBuffer = (char *) malloc(self->buf_len);
+    self->flagsHold = MPPC_PACKET_AT_FRONT;
+    self->historyBuffer = (char *) calloc(self->buf_len, 1);
     if (self->historyBuffer == NULL)
     {
         free(self);
         return NULL;
     }
-    memset(self->historyBuffer, 0, self->buf_len);
-    self->outputBufferPlus = (char *) malloc(self->buf_len + 64);
+    self->outputBufferPlus = (char *) calloc(self->buf_len + 64, 1);
     if (self->outputBufferPlus == NULL)
     {
         free(self->historyBuffer);
         free(self);
         return NULL;
     }
-    memset(self->outputBufferPlus, 0, self->buf_len + 64);
     self->outputBuffer = self->outputBufferPlus + 64;
-    self->hash_table = (unsigned short *) malloc(self->buf_len * 2);
+    self->hash_table = (unsigned short *) calloc(self->buf_len * 2, 1);
     if (self->hash_table == NULL)
     {
         free(self->outputBufferPlus);
@@ -135,7 +132,6 @@ mppc_compress_create(int protocol_type)
         free(self);
         return NULL;
     }
-    memset(self->hash_table, 0, self->buf_len * 2);
     return self; 
 }
 
@@ -148,13 +144,13 @@ mppc_compress_destroy(void *handle)
     self = (struct bulk_mppc *) handle;
     if (self == NULL)
     {
-        return 0; 
+        return MPPC_ERROR_NONE;
     }
     free(self->hash_table);
     free(self->outputBufferPlus);
     free(self->historyBuffer);
     free(self);
-    return 0;
+    return MPPC_ERROR_NONE;
 }
 
 /*****************************************************************************
@@ -497,6 +493,12 @@ static int
 mppc_compress_4(struct bulk_mppc *self, void **cdata, int *cdata_bytes,
                 int *flags, const void *data, int data_bytes)
 {
+    (void)self;
+    (void)cdata;
+    (void)cdata_bytes;
+    (void)flags;
+    (void)data;
+    (void)data_bytes;
     return 0;
 }
 
@@ -540,14 +542,14 @@ mppc_compress_5(struct bulk_mppc *self, void **cdata, int *cdata_bytes,
     hbuf_start = self->historyBuffer;
     outputBuffer = self->outputBuffer;
     memset(outputBuffer, 0, data_bytes);
-    self->flags = NL_PACKET_COMPR_TYPE_64K;
+    self->flags = MPPC_PACKET_COMPR_TYPE_64K;
     if ((self->historyOffset + data_bytes) >= self->buf_len - 3)
     {
         /* historyBuffer cannot hold data - rewind it */
         self->historyOffset = 0;
         memset(hash_table, 0, self->buf_len * 2);
         memset(self->historyBuffer, 0, self->buf_len);
-        self->flagsHold |= NL_PACKET_AT_FRONT | NL_PACKET_FLUSHED;
+        self->flagsHold |= MPPC_PACKET_AT_FRONT | MPPC_PACKET_FLUSHED;
     }
 
     /* point to next free byte in historyBuffer */
@@ -934,14 +936,19 @@ mppc_compress_5(struct bulk_mppc *self, void **cdata, int *cdata_bytes,
         self->historyOffset = 0;
         memset(hash_table, 0, self->buf_len * 2);
         memset(self->historyBuffer, 0, self->buf_len);
-        self->flagsHold |= NL_PACKET_AT_FRONT | NL_PACKET_FLUSHED;
-        return 0;
+        self->flagsHold |= MPPC_PACKET_AT_FRONT | MPPC_PACKET_FLUSHED;
+        return MPPC_ERROR_NO_COMPRESS;
     }
-    self->flags |= NL_PACKET_COMPRESSED;
+    self->flags |= MPPC_PACKET_COMPRESSED;
     self->bytes_in_opb = opb_index;
     self->flags |= self->flagsHold;
     self->flagsHold = 0;
-    return 1;
+
+    *cdata = self->outputBuffer;
+    *cdata_bytes = self->bytes_in_opb;
+    *flags = self->flags;
+
+    return MPPC_ERROR_NONE;
 }
 
 /******************************************************************************/
@@ -955,16 +962,16 @@ mppc_compress(void *handle, void **cdata, int *cdata_bytes, int *flags,
     if ((self == NULL) || (data == NULL) || (data_bytes <= 0) ||
         (data_bytes > self->buf_len))
     {
-        return 1;
+        return MPPC_ERROR_PARAM;
     }
     switch (self->protocol_type)
     {
-        case NL_MPPC_FLAGS_RDP40:
+        case MPPC_FLAGS_RDP40:
             return mppc_compress_4(self, cdata, cdata_bytes, flags,
                                    data, data_bytes);
-        case NL_MPPC_FLAGS_RDP50:
+        case MPPC_FLAGS_RDP50:
             return mppc_compress_5(self, cdata, cdata_bytes, flags,
                                    data, data_bytes);
     }
-    return 1;
+    return MPPC_ERROR_PARAM;
 }

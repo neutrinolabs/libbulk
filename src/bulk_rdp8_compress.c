@@ -1,7 +1,7 @@
 /**
  * RDP8 bulk compressor
  *
- * Copyright 2015 Jay Sorg <jay.sorg@gmail.com>
+ * Copyright 2015-2026 Jay Sorg <jay.sorg@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,12 +23,12 @@
 #include "getset.h"
 
 /* flags for rdp8_compress_create */
-#define NL_RDP8_FLAGS_RDP80 0x04
+#define RDP8_FLAGS_RDP80 0x04
 
 /* flags for mppc_compress */
-#define NL_PACKET_COMPRESSED       0x20
-#define NL_PACKET_COMPR_TYPE_RDP8  0x04
-#define NL_COMPRESSION_TYPE_MASK   0x0F
+#define PACKET_COMPRESSED       0x20
+#define PACKET_COMPR_TYPE_RDP8  0x04
+#define COMPRESSION_TYPE_MASK   0x0F
 
 struct bulk_rdp8
 {
@@ -41,7 +41,7 @@ rdp8_compress_create(int flags)
 {
     struct bulk_rdp8 *bulk;
 
-    if ((flags & NL_RDP8_FLAGS_RDP80) == 0)
+    if ((flags & RDP8_FLAGS_RDP80) == 0)
     {
         return NULL;
     }
@@ -74,6 +74,12 @@ int
 rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
               const char *data, int data_bytes)
 {
+    (void)handle;
+    (void)cdata;
+    (void)cdata_bytes;
+    (void)flags;
+    (void)data;
+    (void)data_bytes;
     return 0;
 }
 
