@@ -19,31 +19,18 @@
 #ifndef __MPPC_COMPRESS_H
 #define __MPPC_COMPRESS_H
 
-/* protocol_type for mppc_compress_create */
-#define MPPC_FLAGS_RDP40    0x00
-#define MPPC_FLAGS_RDP50    0x01
-#define MPPC_FLAGS_RDP60    0x02
-#define MPPC_FLAGS_RDP61    0x03
-
-/* flags for mppc_compress */
-#define MPPC_PACKET_COMPRESSED          0x20
-#define MPPC_PACKET_AT_FRONT            0x40
-#define MPPC_PACKET_FLUSHED             0x80
-#define MPPC_PACKET_COMPR_TYPE_8K       0x00
-#define MPPC_PACKET_COMPR_TYPE_64K      0x01
-#define MPPC_PACKET_COMPR_TYPE_RDP6     0x02
-#define MPPC_PACKET_COMPR_TYPE_RDP61    0x03
-#define MPPC_COMPRESSION_TYPE_MASK      0x0F
+#include <bulk_common.h>
 
 #define MPPC_ERROR_NONE         0
 #define MPPC_ERROR_NO_COMPRESS  1
 #define MPPC_ERROR_PARAM        2
+#define MPPC_ERROR_NOIMP        3
 #define MPPC_ERROR_OTHER        16
 
 /**
  * Creates an encoder object
  *
- * @param protocol_type One of MPPC_FLAGS_RDP*
+ * @param protocol_type One of BULK_PACKET_COMPR_TYPE_*
  * @return Pointer to an encoder object or NULL
  *
  * The return pointer can be used in later calls to mppc_compress_destroy

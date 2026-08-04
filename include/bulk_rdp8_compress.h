@@ -19,6 +19,8 @@
 #ifndef __BULK_RDP8_COMPRESS_H
 #define __BULK_RDP8_COMPRESS_H
 
+#include <bulk_common.h>
+
 void *
 rdp8_compress_create(int flags);
 int
