@@ -178,6 +178,16 @@ int main(int argc, char **argv)
                         printf("main: compare decompress to original, match\n");
                         rv = 0;
                     }
+                    else
+                    {
+                        printf("main: compare decompress to original, no match\n");
+                        error = 1;
+                    }
+                }
+                else
+                {
+                    printf("main: compare decompress data_bytes to original, not match\n");
+                    error = 1;
                 }
             }
         }
@@ -208,6 +218,16 @@ int main(int argc, char **argv)
                             printf("main: second run, compare second decompress to original, match\n");
                             rv = 0;
                         }
+                        else
+                        {
+                            printf("main: second run, compare second decompress to original, no match\n");
+                            error = 1;
+                        }
+                    }
+                    else
+                    {
+                        printf("main: second run, compare second decompress data_bytes to original, not match\n");
+                        error = 1;
                     }
                 }
             }

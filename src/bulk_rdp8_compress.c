@@ -636,7 +636,6 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
         return RDP8_ERROR_PARAM;
     }
 
-
     bulk = (struct bulk_rdp8 *) handle;
     bytes_in_seg = data_bytes;
 
@@ -733,7 +732,7 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
                 i += lom - 1; // -1 because for loop also increments once
                 continue;
             }
-        } /* if (bucket_count[hash]) */
+        } /* if (bulk->bucket_count[hash] != 0) */
         /* did not find a match; track index and count of 'no match' */
         if (no_match_index == 0)
         {
@@ -778,7 +777,7 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     }
     *cdata = (char *) (bulk->output_buf);
     *cdata_bytes = bw.index;
-    *flags = BULK_PACKET_COMPR_TYPE_RDP8;
+    *flags = BULK_PACKET_COMPR_TYPE_RDP8 | BULK_PACKET_COMPRESSED;
     return RDP8_ERROR_NONE;
 }
 

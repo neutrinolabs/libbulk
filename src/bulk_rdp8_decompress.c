@@ -394,9 +394,19 @@ rdp8_decompress(void *handle,
     {
         return 1;
     }
-    if (OutputFromCompressed(bulk, (const byte *) cdata, cdata_bytes) != 0)
+    if (flags & BULK_PACKET_COMPRESSED)
     {
-        return 1;
+        if (OutputFromCompressed(bulk, (const byte *) cdata, cdata_bytes) != 0)
+        {
+            return 1;
+        }
+    }
+    else
+    {
+        if (OutputFromNotCompressed(bulk, (const byte *) cdata, cdata_bytes) != 0)
+        {
+            return 1;
+        }
     }
     *data = (char *) bulk->m_outputBuffer;
     *data_bytes = bulk->m_outputCount;
