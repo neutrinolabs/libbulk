@@ -206,13 +206,6 @@ static struct token g_literals[256] =
     {0xFE, 9, 0, 0},  /* 0xFE           */  {0x36, 6, 0, 0},  /* 0xFF 11_0110   */
 };
 
-/* for converting a u32 into bytes */
-union int_to_ba
-{
-    unsigned int u32val;
-    unsigned char bytes[4];
-};
-
 struct bit_writer
 {
     unsigned char *buf; /* output byte buffer */
@@ -239,14 +232,11 @@ bw_init(struct bit_writer *bw, unsigned char *buf)
 static void
 bw_update_data(struct bit_writer *bw)
 {
-    union int_to_ba u;
-
-    u.u32val = bw->data;
     /* write data to output buf */
-    bw->buf[bw->index++] = u.bytes[3];
-    bw->buf[bw->index++] = u.bytes[2];
-    bw->buf[bw->index++] = u.bytes[1];
-    bw->buf[bw->index++] = u.bytes[0];
+    bw->buf[bw->index++] = bw->data >> 24;
+    bw->buf[bw->index++] = bw->data >> 16;
+    bw->buf[bw->index++] = bw->data >> 8;
+    bw->buf[bw->index++] = bw->data;
     bw->data = 0;
 }
 
@@ -307,17 +297,17 @@ bw_flush(struct bit_writer *bw)
     int partial_bits = used_bits % 8;
     int i;
     int shift_val;
+    int shift_last;
 
-    // Write full bytes
+    /* Write full bytes */
     for (i = 0, shift_val = 24; i < nbytes; i++, shift_val -= 8)
     {
         bw->buf[bw->index++] = (bw->data >> shift_val) & 0xff;
     }
-    // Write partial byte
+    /* Write partial byte */
     if (partial_bits)
     {
-        //int shift_last = 32 - 8 - (8 - unused);
-        int shift_last = 24 - (nbytes * 8);
+        shift_last = 24 - (nbytes * 8);
         bw->buf[bw->index++] = (bw->data >> shift_last) & 0xff;
     }
     /* append unused-bit count */
@@ -369,9 +359,12 @@ bw_align_to_byte(struct bit_writer *bw)
 
 struct bulk_rdp8
 {
-    unsigned int hash_table[HIST_BUF_SIZE][BUCKET_DEPTH];
+    unsigned int hash_table[HIST_BUF_SIZE * BUCKET_DEPTH];
     unsigned char bucket_count[HIST_BUF_SIZE];
     unsigned char hist_buf[HIST_BUF_SIZE];
+    unsigned char *output_buf;  /* contains compressed data */
+    unsigned char *output_buf_plus;
+    unsigned int buf_len;    /* length of output_buf */
 };
 
 /*****************************************************************************/
@@ -380,7 +373,7 @@ clear_tables(unsigned int *hash_table,
              unsigned char *bucket_count,
              unsigned char *hist_buf)
 {
-    memset(hash_table, 0, HIST_BUF_SIZE * 4);
+    memset(hash_table, 0, HIST_BUF_SIZE * BUCKET_DEPTH * 4);
     memset(bucket_count, 0, HIST_BUF_SIZE);
     memset(hist_buf, 0, HIST_BUF_SIZE);
 }
@@ -415,6 +408,7 @@ update_hash_table(unsigned int *hash_table,
 }
 
 /*****************************************************************************/
+/* returns zero when match is found */
 static int
 find_longest_match(unsigned int *hash_table,
                    unsigned char *bucket_count,
@@ -430,11 +424,13 @@ find_longest_match(unsigned int *hash_table,
     unsigned char *src_buf_ptr;
     int cp_offset;
     int lom;
-    int saved_cp_offset = 0;
-    int saved_lom = 0;
+    int saved_cp_offset;
+    int saved_lom;
     int i;
     int j;
 
+    saved_cp_offset = 0;
+    saved_lom = 0;
     /* Get number of buckets in this hash.
        Caller has ensured there is at least one */
     num_matches = bucket_count[hash] % BUCKET_DEPTH;
@@ -491,7 +487,7 @@ find_longest_match(unsigned int *hash_table,
 /*****************************************************************************/
 static void
 insert_unencoded_literals(struct bit_writer *bw, struct token *token_ptr,
-                          unsigned char *buf, int count)
+                          const unsigned char *buf, int count)
 {
     int ctr;
 
@@ -505,15 +501,13 @@ insert_unencoded_literals(struct bit_writer *bw, struct token *token_ptr,
     }
     else
     {
-        // match distance of zero (10001 00000) is a speical case used to indicate start
-        // of unencoded literals. The next 15 bits indicate count of unencoded
-        // literals to follow
+        /* match distance of zero (10001 00000) is a speical case used to
+           indicate start of unencoded literals. The next 15 bits indicate
+           count of unencoded literals to follow */
         bw_put_bits(bw, 0x220, 10);
         bw_put_bits(bw, count, 15);
-
         /* unecoded literals *must* start on a byte boundary */
         bw_align_to_byte(bw);
-
         /* copy enencoded literals as is to output buffer */
         memcpy(&(bw->buf[bw->index]), buf, count);
         bw->index += count;
@@ -574,6 +568,14 @@ rdp8_compress_create(int flags)
     {
         return NULL;
     }
+    bulk->buf_len = 64 * 1024;
+    bulk->output_buf_plus = (unsigned char *) calloc(bulk->buf_len + 64, 1);
+    if (bulk->output_buf_plus == NULL)
+    {
+        free(bulk);
+        return NULL;
+    }
+    bulk->output_buf = bulk->output_buf_plus + 64;
     return bulk;
 }
 
@@ -586,8 +588,9 @@ rdp8_compress_destroy(void *handle)
     bulk = (struct bulk_rdp8 *) handle;
     if (bulk == NULL)
     {
-        return 1;
+        return 0;
     }
+    free(bulk->output_buf_plus);
     free(bulk);
     return 0;
 }
@@ -598,13 +601,159 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
               const char *data, int data_bytes)
 {
     struct bulk_rdp8 *bulk;
-    (void)cdata;
-    (void)cdata_bytes;
-    (void)flags;
-    (void)data;
-    (void)data_bytes;
+    struct bit_writer bw;
+    struct token *token_ptr;
+    unsigned int u32val;
+    unsigned short hash;
+    int bytes_in_seg;
+    int cp_offset;
+    int lom;
+    int i;
+    int j;
+    const unsigned char *src_ptr;
+    int no_match_index; /* index in data[] where the first no match occurred */
+    int no_match_count; /* number of bytes in data[] that did not match      */
+
+    /* so far, nothing has been compressed */
+    if ((cdata == NULL) || (cdata_bytes == NULL) || (flags == NULL))
+    {
+        return RDP8_ERROR_PARAM;
+    }
+    if ((data == NULL) || (data_bytes < 1))
+    {
+        return RDP8_ERROR_PARAM;
+    }
 
     bulk = (struct bulk_rdp8 *) handle;
-    return 0;
+
+    no_match_index = 0;
+    no_match_count = 0;
+
+    //clear_tables(bulk->hash_table, bulk->bucket_count, bulk->hist_buf);
+    src_ptr = (const unsigned char *) data;
+    bytes_in_seg = data_bytes;
+
+    /* copy source data to hist buf */
+    memcpy(bulk->hist_buf, src_ptr, bytes_in_seg);
+
+    bw_init(&bw, bulk->output_buf);
+
+    /* the first two bytes cannot be compressed, output them as literals */
+    token_ptr = &(g_literals[src_ptr[0]]);
+    bw_put_bits(&bw, token_ptr->code, token_ptr->code_bits);
+
+    token_ptr = &(g_literals[src_ptr[1]]);
+    bw_put_bits(&bw, token_ptr->code, token_ptr->code_bits);
+
+    /* create hash for first two triplets in history buffer */
+    update_hash_table(bulk->hash_table, bulk->bucket_count, bulk->hist_buf, 0, 2);
+
+    /* start looking for a match */
+    for (i = 2; i < bytes_in_seg - 2; i++)
+    {
+        /* compute hash for current triplet */
+        u32val = (src_ptr[i] << 8) ^ (src_ptr[i + 1] << 4) ^ src_ptr[i + 2];
+        u32val ^= u32val >> 7;
+        u32val *= 0x9e37;
+        u32val >>= 16;
+        hash = u32val;
+        if (bulk->bucket_count[hash] != 0)
+        {
+            if (find_longest_match(bulk->hash_table, bulk->bucket_count,
+                                   bulk->hist_buf, hash, i, bytes_in_seg - i,
+                                   &cp_offset, &lom) != 0)
+            {
+                /* did not find a match; track index and count of no match */
+                /* Limit unencoded literals to MAX_UNENCODED_LITERALS */
+                if (no_match_count > MAX_UNENCODED_LITERALS)
+                {
+                    insert_unencoded_literals(&bw, token_ptr,
+                                              &(src_ptr[no_match_index]),
+                                              no_match_count);
+                    no_match_count = 0;
+                    no_match_index = 0;
+                }
+            }
+            else
+            {
+                /* found a match */
+                /* save current hash */
+                j = bulk->bucket_count[hash] % BUCKET_DEPTH;
+                bulk->hash_table[hash + HIST_BUF_SIZE * j] = i;
+                bulk->bucket_count[hash]++;
+                /* Write previous 'no matches' to output buffer. If count is
+                   less than 6,
+                   write as encoded literals, else as a string of unencoded
+                   literals */
+                if (no_match_count)
+                {
+                    insert_unencoded_literals(&bw, token_ptr,
+                                              &(src_ptr[no_match_index]),
+                                              no_match_count);
+                    no_match_count = 0;
+                    no_match_index = 0;
+                }
+                /* write match-distance to output buffer */
+                token_ptr = get_dist_token(cp_offset);
+                bw_put_bits(&bw, token_ptr->code, token_ptr->code_bits);
+                bw_put_bits(&bw, cp_offset - token_ptr->value_base,
+                            token_ptr->value_bits);
+                /* write length-of-match to output buffer */
+                token_ptr = get_lom_token(lom);
+                bw_put_bits(&bw, token_ptr->code, token_ptr->code_bits);
+                bw_put_bits(&bw, lom - token_ptr->value_base,
+                            token_ptr->value_bits);
+                /* Save hash for all triplets we are skipping. We have already
+                   saved hash for first triplet where match occurred. */
+                update_hash_table(bulk->hash_table, bulk->bucket_count,
+                                  bulk->hist_buf, i + 1, lom - 1);
+                i += lom - 1; // -1 because for loop also increments once
+                continue;
+            }
+        } /* if (bucket_count[hash]) */
+        /* did not find a match; track index and count of 'no match' */
+        if (no_match_index == 0)
+        {
+            no_match_index = i;
+        }
+        no_match_count++;
+        /* Limit unencoded literals to MAX_UNENCODED_LITERALS */
+        if (no_match_count > MAX_UNENCODED_LITERALS)
+        {
+            insert_unencoded_literals(&bw, token_ptr,
+                                      &(src_ptr[no_match_index]),
+                                      no_match_count);
+            no_match_count = 0;
+            no_match_index = 0;
+        }
+        /* save hash */
+        j = bulk->bucket_count[hash] % BUCKET_DEPTH;
+        bulk->hash_table[hash + HIST_BUF_SIZE * j] = i;
+        bulk->bucket_count[hash]++;
+    } /* for (i = 2; i < bytes_in_seg - 2; i++) */
+    /* Write previous 'no matches' to output buffer. If count is less than 6,
+       write as encoded literals, else as a string of unencoded literals */
+    if (no_match_count)
+    {
+        insert_unencoded_literals(&bw, token_ptr, &src_ptr[no_match_index],
+                                  no_match_count);
+        no_match_count = 0;
+        no_match_index = 0;
+    }
+    /* handle last two bytes */
+    while (i < bytes_in_seg)
+    {
+        token_ptr = &(g_literals[src_ptr[i++]]);
+        bw_put_bits(&bw, token_ptr->code, token_ptr->code_bits);
+    }
+    bw_flush(&bw);
+    if (data_bytes <= bw.index)
+    {
+        return RDP8_ERROR_NO_COMPRESS;
+    }
+    *cdata = (char *) (bulk->output_buf);
+    *cdata_bytes = bw.index;
+    *flags = BULK_PACKET_COMPR_TYPE_RDP8;
+    return RDP8_ERROR_NONE;
 }
 

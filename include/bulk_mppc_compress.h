@@ -16,8 +16,8 @@
  * limitations under the License.
  */
 
-#ifndef __MPPC_COMPRESS_H
-#define __MPPC_COMPRESS_H
+#ifndef __BULK_MPPC_COMPRESS_H
+#define __BULK_MPPC_COMPRESS_H
 
 #include <bulk_common.h>
 

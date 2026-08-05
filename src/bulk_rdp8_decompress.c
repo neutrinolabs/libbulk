@@ -386,8 +386,37 @@ OutputFromSegment(struct bulk_rdp8 *bulk, const byte *pbSegment,
 
 /*****************************************************************************/
 int
-rdp8_decompress(void *handle, const char *cdata, int cdata_bytes, int flags,
+rdp8_decompress(void *handle,
+                const char *cdata, int cdata_bytes,
+                int flags,
                 char **data, int *data_bytes)
+{
+    struct bulk_rdp8 *bulk;
+
+    bulk = (struct bulk_rdp8 *) handle;
+    if (bulk == NULL)
+    {
+        return 1;
+    }
+    if ((flags & COMPRESSION_TYPE_MASK) != PACKET_COMPR_TYPE_RDP8)
+    {
+        return 1;
+    }
+    if (OutputFromCompressed(bulk, (const byte *) cdata, cdata_bytes) != 0)
+    {
+        return 1;
+    }
+    *data = (char *) bulk->m_outputBuffer;
+    *data_bytes = bulk->m_outputCount;
+    return 0;
+}
+
+/*****************************************************************************/
+int
+rdp8_decompress_multi_seg_allloc(void *handle,
+                                 const char *cdata, int cdata_bytes,
+                                 int flags,
+                                 char **data, int *data_bytes)
 {
     struct bulk_rdp8 *bulk;
 

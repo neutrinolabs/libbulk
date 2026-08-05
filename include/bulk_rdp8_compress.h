@@ -21,10 +21,48 @@
 
 #include <bulk_common.h>
 
+#define RDP8_ERROR_NONE         0
+#define RDP8_ERROR_NO_COMPRESS  1
+#define RDP8_ERROR_PARAM        2
+#define RDP8_ERROR_NOIMP        3
+#define RDP8_ERROR_OTHER        16
+
+/**
+ * Creates an encoder object
+ *
+ * @param protocol_type BULK_PACKET_COMPR_TYPE_RDP8
+ * @return Pointer to an encoder object or NULL
+ *
+ * The return pointer can be used in later calls to rdp8_compress_destroy
+ * and rdp8_compress
+ */
 void *
 rdp8_compress_create(int flags);
+
+/**
+ * Deletes an encoder object
+ *
+ * @param handle Pointer to an encoder object or NULL
+ * @return Always returns RDP8_ERROR_NONE
+ */
 int
 rdp8_compress_destroy(void *handle);
+
+/**
+ * Compress a PDU
+ *
+ * @param handle Pointer to an encoder object or NULL
+ * @param cdata Pointer to a pointer that received the address of the
+ *              compressed data.  The data has a 64 bytes empty header
+ *              preceding this pointer that can used by the application
+ * @param cdata_bytes Pointer to an integer that recieves the compressed
+ *                    data size
+ * @param flags Pointer the an integer that recieves the compression flags
+ * @param data Pointer the the data to compress
+ * @param data_bytes The number of bytes to compress
+ * @return Returns RDP8_ERROR_NONE on successful compression else
+ *         one of RDP8_ERROR_*
+ */
 int
 rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
               const char *data, int data_bytes);

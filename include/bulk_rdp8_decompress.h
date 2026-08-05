@@ -16,16 +16,23 @@
  * limitations under the License.
  */
 
-#ifndef __BULK_RDP8_COMPRESS_H
-#define __BULK_RDP8_COMPRESS_H
+#ifndef __BULK_RDP8_DECOMPRESS_H
+#define __BULK_RDP8_DECOMPRESS_H
 
 void *
 rdp8_decompress_create(int flags);
 int
 rdp8_decompress_destroy(void *handle);
 int
-rdp8_decompress(void *handle, const char *cdata, int cdata_bytes, int flags,
+rdp8_decompress(void *handle,
+                const char *cdata, int cdata_bytes,
+                int flags,
                 char **data, int *data_bytes);
+int
+rdp8_decompress_multi_seg_allloc(void *handle,
+                                 const char *cdata, int cdata_bytes,
+                                 int flags,
+                                 char **data, int *data_bytes);
 
 #endif
 
