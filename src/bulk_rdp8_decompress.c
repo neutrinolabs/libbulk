@@ -22,15 +22,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <bulk_rdp8_decompress.h>
+
 #include "getset.h"
-
-/* flags for rdp8_compress_create */
-#define RDP8_FLAGS_RDP80 0x04
-
-/* flags for mppc_compress */
-#define PACKET_COMPRESSED       0x20
-#define PACKET_COMPR_TYPE_RDP8  0x04
-#define COMPRESSION_TYPE_MASK   0x0F
 
 typedef unsigned char byte;
 typedef unsigned short uint16;
@@ -115,40 +108,6 @@ struct bulk_rdp8
     byte m_historyBuffer[2500000];    /* last N bytes of output */
     uint32 m_historyIndex;            /* index for next byte out */
 };
-
-/*****************************************************************************/
-void *
-rdp8_decompress_create(int flags)
-{
-    struct bulk_rdp8 *bulk;
-
-    if ((flags & RDP8_FLAGS_RDP80) == 0)
-    {
-        return NULL;
-    }
-    bulk = (struct bulk_rdp8 *) malloc(sizeof(struct bulk_rdp8));
-    if (bulk == NULL)
-    {
-        return NULL;
-    }
-    memset(bulk, 0, sizeof(struct bulk_rdp8));
-    return bulk;
-}
-
-/*****************************************************************************/
-int
-rdp8_decompress_destroy(void *handle)
-{
-    struct bulk_rdp8 *bulk;
-
-    bulk = (struct bulk_rdp8 *) handle;
-    if (bulk == NULL)
-    {
-        return 1;
-    }
-    free(bulk);
-    return 0;
-}
 
 /*****************************************************************************/
 /*  Return the value of the next 'bitCount' bits as unsigned. */
@@ -374,7 +333,7 @@ static int
 OutputFromSegment(struct bulk_rdp8 *bulk, const byte *pbSegment,
                   int cbSegment)
 {
-    if (pbSegment[0] & PACKET_COMPRESSED)
+    if (pbSegment[0] & BULK_PACKET_COMPRESSED)
     {
         return OutputFromCompressed(bulk, pbSegment + 1, cbSegment - 1);
     }
@@ -382,6 +341,39 @@ OutputFromSegment(struct bulk_rdp8 *bulk, const byte *pbSegment,
     {
         return OutputFromNotCompressed(bulk, pbSegment + 1, cbSegment - 1);
     }
+}
+
+/*****************************************************************************/
+void *
+rdp8_decompress_create(int flags)
+{
+    struct bulk_rdp8 *bulk;
+
+    if ((flags & BULK_COMPRESSION_TYPE_MASK) != BULK_PACKET_COMPR_TYPE_RDP8)
+    {
+        return NULL;
+    }
+    bulk = (struct bulk_rdp8 *) calloc(sizeof(struct bulk_rdp8), 1);
+    if (bulk == NULL)
+    {
+        return NULL;
+    }
+    return bulk;
+}
+
+/*****************************************************************************/
+int
+rdp8_decompress_destroy(void *handle)
+{
+    struct bulk_rdp8 *bulk;
+
+    bulk = (struct bulk_rdp8 *) handle;
+    if (bulk == NULL)
+    {
+        return 1;
+    }
+    free(bulk);
+    return 0;
 }
 
 /*****************************************************************************/
@@ -398,7 +390,7 @@ rdp8_decompress(void *handle,
     {
         return 1;
     }
-    if ((flags & COMPRESSION_TYPE_MASK) != PACKET_COMPR_TYPE_RDP8)
+    if ((flags & BULK_COMPRESSION_TYPE_MASK) != BULK_PACKET_COMPR_TYPE_RDP8)
     {
         return 1;
     }
@@ -435,7 +427,7 @@ rdp8_decompress_multi_seg_allloc(void *handle,
     {
         return 1;
     }
-    if ((flags & COMPRESSION_TYPE_MASK) != PACKET_COMPR_TYPE_RDP8)
+    if ((flags & BULK_COMPRESSION_TYPE_MASK) != BULK_PACKET_COMPR_TYPE_RDP8)
     {
         return 0;
     }

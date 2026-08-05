@@ -294,13 +294,16 @@ bw_put_bits(struct bit_writer *bw, unsigned int value, int nbits)
 static void
 bw_flush(struct bit_writer *bw)
 {
-    int used_bits = 32 - bw->bits_left;
-    int nbytes = used_bits / 8;
-    int partial_bits = used_bits % 8;
+    int used_bits;
+    int nbytes;
+    int partial_bits;
     int i;
     int shift_val;
     int shift_last;
 
+    used_bits = 32 - bw->bits_left;
+    nbytes = used_bits / 8;
+    partial_bits = used_bits % 8;
     /* Write full bytes */
     for (i = 0, shift_val = 24; i < nbytes; i++, shift_val -= 8)
     {
@@ -562,7 +565,7 @@ rdp8_compress_create(int flags)
 {
     struct bulk_rdp8 *bulk;
 
-    if ((flags & BULK_PACKET_COMPR_TYPE_RDP8) == 0)
+    if ((flags & BULK_COMPRESSION_TYPE_MASK) != BULK_PACKET_COMPR_TYPE_RDP8)
     {
         return NULL;
     }
@@ -572,7 +575,7 @@ rdp8_compress_create(int flags)
         return NULL;
     }
     bulk->buf_len = 64 * 1024;
-    bulk->output_buf_plus = (unsigned char *) calloc(bulk->buf_len + 64, 1);
+    bulk->output_buf_plus = (unsigned char *) calloc(bulk->buf_len * 2, 1);
     if (bulk->output_buf_plus == NULL)
     {
         free(bulk);
@@ -615,7 +618,8 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     int i;
     int j;
     int no_match_index; /* index in hist_buf where first no match occurred */
-    int no_match_count; /* number of bytes that did not match               */
+    int no_match_count; /* number of bytes that did not match              */
+    int lflags;
 
     /* so far, nothing has been compressed */
     if ((cdata == NULL) || (cdata_bytes == NULL) || (flags == NULL))
@@ -626,6 +630,12 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     {
         return RDP8_ERROR_PARAM;
     }
+    lflags = *flags;
+    if ((lflags & BULK_COMPRESSION_TYPE_MASK) != BULK_PACKET_COMPR_TYPE_RDP8)
+    {
+        return RDP8_ERROR_PARAM;
+    }
+
 
     bulk = (struct bulk_rdp8 *) handle;
     bytes_in_seg = data_bytes;
@@ -633,7 +643,7 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     no_match_index = 0;
     no_match_count = 0;
 
-    if ((*flags & BULK_PACKET_FLUSHED) ||
+    if ((lflags & BULK_PACKET_FLUSHED) ||
         ((bulk->hist_index + bytes_in_seg) >= HIST_BUF_LEN))
     {
         clear_tables(bulk->hash_table, bulk->bucket_count, bulk->hist_buf);

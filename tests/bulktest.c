@@ -6,6 +6,14 @@
 #include <bulk_rdp8_compress.h>
 #include <bulk_rdp8_decompress.h>
 
+#define DO_HEXDUMP 0
+
+#if DO_HEXDUMP
+#define HEXDUMP(_p, _len) g_hexdump(_p, _len)
+#else
+#define HEXDUMP(_p, _len)
+#endif
+
 /*****************************************************************************/
 /* print a hex dump to stdout*/
 void
@@ -121,7 +129,7 @@ int main(int argc, char **argv)
         printf("main: ----------------------------------------------------\n");
         printf("main: performing test %ld\n", index);
         rv = 1;
-        flags = BULK_PACKET_FLUSHED;
+        flags = BULK_PACKET_COMPR_TYPE_RDP8 | BULK_PACKET_FLUSHED;
         error = rdp8_compress(comp_han, &lcdata, &lcdata_bytes, &flags,
                               (const char *) (data[index]), data_bytes[index]);
         printf("main: rdp8_compress rv %d\n", error);
@@ -154,7 +162,7 @@ int main(int argc, char **argv)
         if (error == 0)
         {
             printf("main: cdata_bytes %d\n", lcdata_bytes);
-            g_hexdump(lcdata, lcdata_bytes);
+            HEXDUMP(lcdata, lcdata_bytes);
             /* now decompress */
             error = rdp8_decompress(decomp_han, lcdata, lcdata_bytes, flags,
                                     &ldata, &ldata_bytes);
@@ -162,7 +170,7 @@ int main(int argc, char **argv)
             if (error == 0)
             {
                 printf("main: ldata_bytes %d\n", ldata_bytes);
-                g_hexdump(ldata, ldata_bytes);
+                HEXDUMP(ldata, ldata_bytes);
                 if (data_bytes[index] == ldata_bytes)
                 {
                     if (memcmp(ldata, data[index], ldata_bytes) == 0)
@@ -184,7 +192,7 @@ int main(int argc, char **argv)
             if (error == 0)
             {
                 printf("main: second run, cdata_bytes %d\n", lcdata_bytes);
-                g_hexdump(lcdata, lcdata_bytes);
+                HEXDUMP(lcdata, lcdata_bytes);
                 /* now decompress */
                 error = rdp8_decompress(decomp_han, lcdata, lcdata_bytes, flags,
                                         &ldata, &ldata_bytes);
@@ -192,7 +200,7 @@ int main(int argc, char **argv)
                 if (error == 0)
                 {
                     printf("main: second run, ldata_bytes %d\n", ldata_bytes);
-                    g_hexdump(ldata, ldata_bytes);
+                    HEXDUMP(ldata, ldata_bytes);
                     if (data_bytes[index] == ldata_bytes)
                     {
                         if (memcmp(ldata, data[index], ldata_bytes) == 0)
@@ -215,4 +223,3 @@ int main(int argc, char **argv)
     rdp8_compress_destroy(comp_han);
     return rv;
 }
-
