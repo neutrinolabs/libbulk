@@ -70,30 +70,37 @@ int main(int argc, char **argv)
     {
         "\x01\x02\xFF\x65\x65\x65\x65\x65",
         "The quick brown fox jumps over the lazy dog",
-        "ABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABC"
+        "ABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABC",
+        "The quick brown fox jumps over the lazy dog"
+        "The quick brown fox jumps over the lazy dog"
     };
     int data_bytes [] =
     {
         8,
         43,
-        60
+        60,
+        86
     };
     unsigned char cdata[][128] =
     {
         "\xCE\x9B\x19\x62\x18\x00",
         "NA",
-        "\x20\x90\x88\x71\x1F\xB2\x01"
+        "\x20\x90\x88\x71\x1F\xB2\x01",
+        "NA"
     };
+    /* -1 in this list means don't check */
     int cdata_bytes [] =
     {
         6,
         0,
-        7
+        7,
+        -1
     };
     int expected_error[] =
     {
         RDP8_ERROR_NONE,
         RDP8_ERROR_NO_COMPRESS,
+        RDP8_ERROR_NONE,
         RDP8_ERROR_NONE
     };
 
@@ -109,12 +116,16 @@ int main(int argc, char **argv)
         printf("main: rdp8_decompress_create failed\n");
     }
 
-    for (index = 0; index < 3; index++)
+    for (index = 0; index < sizeof(data) / sizeof(data[0]); index++)
     {
+        printf("main: ----------------------------------------------------\n");
+        printf("main: ----------------------------------------------------\n");
+        printf("main: performing test %d\n", index);
         rv = 1;
+        flags = BULK_PACKET_FLUSHED;
         error = rdp8_compress(comp_han, &lcdata, &lcdata_bytes, &flags,
                               (const char *) (data[index]), data_bytes[index]);
-        printf("main: rdp8_compress 0 rv %d\n", error);
+        printf("main: rdp8_compress rv %d\n", error);
         if ((error != RDP8_ERROR_NONE) && (error == expected_error[index]))
         {
             /* this is ok */
@@ -128,13 +139,15 @@ int main(int argc, char **argv)
             error = 1;
         }
         /* check against expected cdata_bytes */
-        if ((error == 0) && (lcdata_bytes != cdata_bytes[index]))
+        if ((error == 0) && (cdata_bytes[index] != -1) &&
+            (lcdata_bytes != cdata_bytes[index]))
         {
             printf("main: compress succeded but does not match expected\n");
             error = 1;
         }
         /* check against expected cdata */
-        if ((error == 0) && (memcmp(lcdata, cdata[index], lcdata_bytes) != 0))
+        if ((error == 0) && (cdata_bytes[index] != -1) &&
+            (memcmp(lcdata, cdata[index], lcdata_bytes) != 0))
         {
             printf("main: compress succeded but does not match expected\n");
             error = 1;
@@ -157,6 +170,38 @@ int main(int argc, char **argv)
                     {
                         printf("main: match\n");
                         rv = 0;
+                    }
+                }
+            }
+        }
+        /* second run */
+        if (error == 0)
+        {
+            lcdata_bytes = 0;
+            error = rdp8_compress(comp_han, &lcdata, &lcdata_bytes, &flags,
+                                  (const char *) (data[index]),
+                                  data_bytes[index]);
+            printf("main: second run rdp8_compress rv %d lcdata_bytes %d\n",
+                   error, lcdata_bytes);
+            if (error == 0)
+            {
+                printf("main: second run cdata_bytes %d\n", lcdata_bytes);
+                g_hexdump(lcdata, lcdata_bytes);
+                /* now decompress */
+                error = rdp8_decompress(decomp_han, lcdata, lcdata_bytes, flags,
+                                        &ldata, &ldata_bytes);
+                printf("main: second run rdp8_decompress 0 rv %d\n", error);
+                if (error == 0)
+                {
+                    printf("main: ldata_bytes %d\n", ldata_bytes);
+                    g_hexdump(ldata, ldata_bytes);
+                    if (data_bytes[index] == ldata_bytes)
+                    {
+                        if (memcmp(ldata, data[index], ldata_bytes) == 0)
+                        {
+                            printf("main: second run match\n");
+                            rv = 0;
+                        }
                     }
                 }
             }
