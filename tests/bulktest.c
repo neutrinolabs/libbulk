@@ -61,7 +61,7 @@ int main(int argc, char **argv)
     int flags;
     int error;
     int rv;
-    int index;
+    unsigned long index;
 
     (void)argc;
     (void)argv;
@@ -71,8 +71,7 @@ int main(int argc, char **argv)
         "\x01\x02\xFF\x65\x65\x65\x65\x65",
         "The quick brown fox jumps over the lazy dog",
         "ABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABC",
-        "The quick brown fox jumps over the lazy dog"
-        "The quick brown fox jumps over the lazy dog"
+        "The quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dog"
     };
     int data_bytes [] =
     {
@@ -120,7 +119,7 @@ int main(int argc, char **argv)
     {
         printf("main: ----------------------------------------------------\n");
         printf("main: ----------------------------------------------------\n");
-        printf("main: performing test %d\n", index);
+        printf("main: performing test %ld\n", index);
         rv = 1;
         flags = BULK_PACKET_FLUSHED;
         error = rdp8_compress(comp_han, &lcdata, &lcdata_bytes, &flags,
@@ -168,38 +167,37 @@ int main(int argc, char **argv)
                 {
                     if (memcmp(ldata, data[index], ldata_bytes) == 0)
                     {
-                        printf("main: match\n");
+                        printf("main: compare decompress to original, match\n");
                         rv = 0;
                     }
                 }
             }
         }
-        /* second run */
+        /* second run to make sure history buffer is used and cdata is smaller */
         if (error == 0)
         {
             lcdata_bytes = 0;
             error = rdp8_compress(comp_han, &lcdata, &lcdata_bytes, &flags,
                                   (const char *) (data[index]),
                                   data_bytes[index]);
-            printf("main: second run rdp8_compress rv %d lcdata_bytes %d\n",
-                   error, lcdata_bytes);
+            printf("main: second run, rdp8_compress rv %d\n", error);
             if (error == 0)
             {
-                printf("main: second run cdata_bytes %d\n", lcdata_bytes);
+                printf("main: second run, cdata_bytes %d\n", lcdata_bytes);
                 g_hexdump(lcdata, lcdata_bytes);
                 /* now decompress */
                 error = rdp8_decompress(decomp_han, lcdata, lcdata_bytes, flags,
                                         &ldata, &ldata_bytes);
-                printf("main: second run rdp8_decompress 0 rv %d\n", error);
+                printf("main: second run, rdp8_decompress 0 rv %d\n", error);
                 if (error == 0)
                 {
-                    printf("main: ldata_bytes %d\n", ldata_bytes);
+                    printf("main: second run, ldata_bytes %d\n", ldata_bytes);
                     g_hexdump(ldata, ldata_bytes);
                     if (data_bytes[index] == ldata_bytes)
                     {
                         if (memcmp(ldata, data[index], ldata_bytes) == 0)
                         {
-                            printf("main: second run match\n");
+                            printf("main: second run, compare second decompress to original, match\n");
                             rv = 0;
                         }
                     }
