@@ -629,7 +629,7 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     no_match_index = 0;
     no_match_count = 0;
 
-    //clear_tables(bulk->hash_table, bulk->bucket_count, bulk->hist_buf);
+    clear_tables(bulk->hash_table, bulk->bucket_count, bulk->hist_buf);
     src_ptr = (const unsigned char *) data;
     bytes_in_seg = data_bytes;
 

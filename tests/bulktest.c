@@ -54,8 +54,10 @@ int main(int argc, char **argv)
 {
     void *comp_han;
     void *decomp_han;
-    char *cdata;
-    int cdata_bytes;
+    char *lcdata;
+    int lcdata_bytes;
+    char *ldata;
+    int ldata_bytes;
     int flags;
     int error;
     int rv;
@@ -64,16 +66,36 @@ int main(int argc, char **argv)
     (void)argc;
     (void)argv;
 
-    char data[][128] =
-        {
-            "\x01\x02\xFF\x65\x65\x65\x65\x65",
-            "The quick brown fox jumps over the lazy dog",
-            "ABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABC"
-        };
-    int expected_error[] = {0, 1, 0};
-    int data_bytes;
-    char *decomp_data;
-    int decomp_data_bytes;
+    unsigned char data[][128] =
+    {
+        "\x01\x02\xFF\x65\x65\x65\x65\x65",
+        "The quick brown fox jumps over the lazy dog",
+        "ABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABC"
+    };
+    int data_bytes [] =
+    {
+        8,
+        43,
+        60
+    };
+    unsigned char cdata[][128] =
+    {
+        "\xCE\x9B\x19\x62\x18\x00",
+        "NA",
+        "\x20\x90\x88\x71\x1F\xB2\x01"
+    };
+    int cdata_bytes [] =
+    {
+        6,
+        0,
+        7
+    };
+    int expected_error[] =
+    {
+        RDP8_ERROR_NONE,
+        RDP8_ERROR_NO_COMPRESS,
+        RDP8_ERROR_NONE
+    };
 
     comp_han = rdp8_compress_create(BULK_PACKET_COMPR_TYPE_RDP8);
     if (comp_han == NULL)
@@ -90,36 +112,48 @@ int main(int argc, char **argv)
     for (index = 0; index < 3; index++)
     {
         rv = 1;
-        data_bytes = strlen(data[index]);
-        error = rdp8_compress(comp_han, &cdata, &cdata_bytes, &flags, data[index], data_bytes);
+        error = rdp8_compress(comp_han, &lcdata, &lcdata_bytes, &flags,
+                              (const char *) (data[index]), data_bytes[index]);
         printf("main: rdp8_compress 0 rv %d\n", error);
-        if ((error != 0) && (expected_error[index] != 0))
+        if ((error != RDP8_ERROR_NONE) && (error == expected_error[index]))
         {
-            /* this is ok too */
+            /* this is ok */
             printf("main: compress failed but that was expected\n");
             rv = 0;
         }
-        if ((error == 0) && (expected_error[index] != 0))
+        if ((error == RDP8_ERROR_NONE) && (expected_error[index] != RDP8_ERROR_NONE))
         {
-            /* this is ok too */
+            /* this is not ok */
             printf("main: compress succeded but that was not expected\n");
+            error = 1;
+        }
+        /* check against expected cdata_bytes */
+        if ((error == 0) && (lcdata_bytes != cdata_bytes[index]))
+        {
+            printf("main: compress succeded but does not match expected\n");
+            error = 1;
+        }
+        /* check against expected cdata */
+        if ((error == 0) && (memcmp(lcdata, cdata[index], lcdata_bytes) != 0))
+        {
+            printf("main: compress succeded but does not match expected\n");
             error = 1;
         }
         if (error == 0)
         {
-            printf("main: cdata_bytes %d\n", cdata_bytes);
-            g_hexdump(cdata, cdata_bytes);
+            printf("main: cdata_bytes %d\n", lcdata_bytes);
+            g_hexdump(lcdata, lcdata_bytes);
             /* now decompress */
-            error = rdp8_decompress(decomp_han, cdata, cdata_bytes, flags,
-                                    &decomp_data, &decomp_data_bytes);
+            error = rdp8_decompress(decomp_han, lcdata, lcdata_bytes, flags,
+                                    &ldata, &ldata_bytes);
             printf("main: rdp8_decompress 0 rv %d\n", error);
             if (error == 0)
             {
-                printf("main: decomp_data_bytes %d\n", decomp_data_bytes);
-                g_hexdump(decomp_data, decomp_data_bytes);
-                if (data_bytes == decomp_data_bytes)
+                printf("main: ldata_bytes %d\n", ldata_bytes);
+                g_hexdump(ldata, ldata_bytes);
+                if (data_bytes[index] == ldata_bytes)
                 {
-                    if (memcmp(decomp_data, data[index], decomp_data_bytes) == 0)
+                    if (memcmp(ldata, data[index], ldata_bytes) == 0)
                     {
                         printf("main: match\n");
                         rv = 0;
@@ -134,7 +168,6 @@ int main(int argc, char **argv)
             return rv;
         }
     }
-
     rdp8_decompress_destroy(decomp_han);
     rdp8_compress_destroy(comp_han);
     return rv;
