@@ -1,6 +1,7 @@
 /**
  * RDP8 bulk compressor
  *
+ * Copyright 2025 Laxmikant Rashinkar <LK.Rashinkar@gmail.com>
  * Copyright 2015-2026 Jay Sorg <jay.sorg@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
