@@ -54,11 +54,11 @@ mppc_compress_destroy(void *handle);
  * @param handle Pointer to an encoder object or NULL
  * @param cdata Pointer to a pointer that received the address of the
  *              compressed data.  The data has a 64 bytes empty header
- *              preceding this pointer that can used by the application
- * @param cdata_bytes Pointer to an integer that recieves the compressed
+ *              preceding this pointer that can be used by the application
+ * @param cdata_bytes Pointer to an integer that receives the compressed
  *                    data size
- * @param flags Pointer the an integer that recieves the compression flags
- * @param data Pointer the the data to compress
+ * @param flags Pointer to an integer that receives the compression flags
+ * @param data Pointer to the data to compress
  * @param data_bytes The number of bytes to compress
  * @return Returns MPPC_ERROR_NONE on successful compression else
  *         one of MPPC_ERROR_*

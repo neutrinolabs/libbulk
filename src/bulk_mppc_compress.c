@@ -76,7 +76,7 @@ struct bulk_mppc
     char   *outputBufferPlus;
     int     historyOffset;      /* next free slot in historyBuffer */
     int     buf_len;            /* length of historyBuffer,
-                                   protocol dependant */
+                                   protocol dependent */
     int     bytes_in_opb;       /* compressed bytes available in
                                    outputBuffer */
     int     flags;              /* BULK_PACKET_COMPRESSED,

@@ -32,7 +32,7 @@
 struct token
 {
     unsigned int code;      /* Huffman code */
-    int code_bits;          /* numbesr of bits in Huffman code */
+    int code_bits;          /* number of bits in Huffman code */
     int value_bits;         /* number of bits in value */
     int value_base;         /* value to add (decoder) or subtract (encoder) */
 };
@@ -507,14 +507,14 @@ insert_unencoded_literals(struct bit_writer *bw, struct token *token_ptr,
     }
     else
     {
-        /* match distance of zero (10001 00000) is a speical case used to
+        /* match distance of zero (10001 00000) is a special case used to
            indicate start of unencoded literals. The next 15 bits indicate
            count of unencoded literals to follow */
         bw_put_bits(bw, 0x220, 10);
         bw_put_bits(bw, count, 15);
-        /* unecoded literals *must* start on a byte boundary */
+        /* unencoded literals *must* start on a byte boundary */
         bw_align_to_byte(bw);
-        /* copy enencoded literals as is to output buffer */
+        /* copy unencoded literals as is to output buffer */
         memcpy(&(bw->buf[bw->index]), buf, count);
         bw->index += count;
     }

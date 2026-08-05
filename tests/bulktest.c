@@ -142,21 +142,21 @@ int main(int argc, char **argv)
         if ((error == RDP8_ERROR_NONE) && (expected_error[index] != RDP8_ERROR_NONE))
         {
             /* this is not ok */
-            printf("main: compress succeded but that was not expected\n");
+            printf("main: compress succeeded but that was not expected\n");
             error = 1;
         }
         /* check against expected cdata_bytes */
         if ((error == 0) && (cdata_bytes[index] != -1) &&
             (lcdata_bytes != cdata_bytes[index]))
         {
-            printf("main: compress succeded but does not match expected\n");
+            printf("main: compress succeeded but does not match expected\n");
             error = 1;
         }
         /* check against expected cdata */
         if ((error == 0) && (cdata_bytes[index] != -1) &&
             (memcmp(lcdata, cdata[index], lcdata_bytes) != 0))
         {
-            printf("main: compress succeded but does not match expected\n");
+            printf("main: compress succeeded but does not match expected\n");
             error = 1;
         }
         if (error == 0)
