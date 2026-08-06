@@ -603,7 +603,6 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     struct token *token_ptr;
     unsigned int u32val;
     unsigned short hash;
-    int bytes_in_seg;
     int hist_start;
     int cp_offset;
     int lom;
@@ -625,17 +624,16 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     lflags = *flags;
     if ((lflags & BULK_COMPRESSION_TYPE_MASK) != BULK_PACKET_COMPR_TYPE_RDP8)
     {
-        return RDP8_ERROR_PARAM;
+        return RDP8_ERROR_NOIMP;
     }
 
     bulk = (struct bulk_rdp8 *) handle;
-    bytes_in_seg = data_bytes;
 
     no_match_index = 0;
     no_match_count = 0;
 
     if ((lflags & BULK_PACKET_FLUSHED) ||
-        ((bulk->hist_index + bytes_in_seg) >= HIST_BUF_LEN))
+        ((bulk->hist_index + data_bytes) >= HIST_BUF_LEN))
     {
         clear_tables(bulk);
         bulk->hist_index = 0;
@@ -644,7 +642,7 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     hist_start = bulk->hist_index;
 
     /* copy source data to hist buf at current position */
-    memcpy(&(bulk->hist_buf[hist_start]), data, bytes_in_seg);
+    memcpy(&(bulk->hist_buf[hist_start]), data, data_bytes);
 
     bw_init(&bw, bulk->output_buf);
 
@@ -659,7 +657,7 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     update_hash_table(bulk, hist_start, 2);
 
     /* start looking for a match */
-    for (i = hist_start + 2; i < hist_start + bytes_in_seg - 2; i++)
+    for (i = hist_start + 2; i < hist_start + data_bytes - 2; i++)
     {
         /* compute hash for current triplet */
         u32val = (bulk->hist_buf[i] << 8) ^
@@ -672,7 +670,7 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
         if (bulk->bucket_count[hash] != 0)
         {
             if (find_longest_match(bulk, hash, i,
-                                   hist_start + bytes_in_seg - i,
+                                   hist_start + data_bytes - i,
                                    &cp_offset, &lom) != 0)
             {
                 /* did not find a match; track index and count of no match */
@@ -753,13 +751,13 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
         no_match_index = 0;
     }
     /* handle last two bytes */
-    while (i < hist_start + bytes_in_seg)
+    while (i < hist_start + data_bytes)
     {
         token_ptr = &(g_literals[bulk->hist_buf[i++]]);
         bw_put_bits(&bw, token_ptr->code, token_ptr->code_bits);
     }
     bw_flush(&bw);
-    bulk->hist_index += bytes_in_seg;
+    bulk->hist_index += data_bytes;
     if (data_bytes <= bw.index)
     {
         return RDP8_ERROR_NO_COMPRESS;
