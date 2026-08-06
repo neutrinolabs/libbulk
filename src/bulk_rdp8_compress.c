@@ -375,22 +375,16 @@ struct bulk_rdp8
 
 /*****************************************************************************/
 static void
-clear_tables(unsigned int *hash_table,
-             unsigned char *bucket_count,
-             unsigned char *hist_buf)
+clear_tables(struct bulk_rdp8 *bulk)
 {
-    memset(hash_table, 0, HASH_TABLE_WIDTH * BUCKET_DEPTH * 4);
-    memset(bucket_count, 0, HASH_TABLE_WIDTH);
-    memset(hist_buf, 0, HIST_BUF_LEN);
+    memset(bulk->hash_table, 0, sizeof(bulk->hash_table));
+    memset(bulk->bucket_count, 0, sizeof(bulk->bucket_count));
+    memset(bulk->hist_buf, 0, sizeof(bulk->hist_buf));
 }
 
 /*****************************************************************************/
 static void
-update_hash_table(unsigned int *hash_table,
-                  unsigned char *bucket_count,
-                  unsigned char *hist_buf,
-                  int start_index,
-                  int num_triplets)
+update_hash_table(struct bulk_rdp8 *bulk, int start_index, int num_triplets)
 {
     unsigned int u32val;
     unsigned short hash;
@@ -398,7 +392,7 @@ update_hash_table(unsigned int *hash_table,
     int j;
     unsigned char *cptr;
 
-    cptr = &(hist_buf[start_index]);
+    cptr = &(bulk->hist_buf[start_index]);
     for (i = 0; i < num_triplets; i++)
     {
         u32val = (cptr[0] << 8) ^ (cptr[1] << 4) ^ cptr[2];
@@ -406,9 +400,9 @@ update_hash_table(unsigned int *hash_table,
         u32val *= 0x9e37;
         u32val >>= 16;
         hash = u32val;
-        j = bucket_count[hash] % BUCKET_DEPTH;
-        hash_table[hash + j * HASH_TABLE_WIDTH] = start_index + i;
-        bucket_count[hash]++;
+        j = bulk->bucket_count[hash] % BUCKET_DEPTH;
+        bulk->hash_table[hash + j * HASH_TABLE_WIDTH] = start_index + i;
+        bulk->bucket_count[hash]++;
         cptr++;
     }
 }
@@ -416,9 +410,7 @@ update_hash_table(unsigned int *hash_table,
 /*****************************************************************************/
 /* returns zero when match is found */
 static int
-find_longest_match(unsigned int *hash_table,
-                   unsigned char *bucket_count,
-                   unsigned char *hist_buf,
+find_longest_match(struct bulk_rdp8 *bulk,
                    unsigned short hash,
                    int src_buf_index,
                    int src_buf_len,
@@ -428,9 +420,9 @@ find_longest_match(unsigned int *hash_table,
     int num_matches;
     unsigned char *hist_buf_ptr;
     unsigned char *src_buf_ptr;
-    int cp_offset;
+    unsigned int cp_offset;
+    unsigned int saved_cp_offset;
     int lom;
-    int saved_cp_offset;
     int saved_lom;
     int i;
     int j;
@@ -439,16 +431,16 @@ find_longest_match(unsigned int *hash_table,
     saved_lom = 0;
     /* Get number of buckets in this hash.
        Caller has ensured there is at least one */
-    num_matches = bucket_count[hash] % BUCKET_DEPTH;
+    num_matches = bulk->bucket_count[hash] % BUCKET_DEPTH;
     if (num_matches == 0)
     {
         num_matches = 4;
     }
-    src_buf_ptr = &(hist_buf[src_buf_index]);
+    src_buf_ptr = &(bulk->hist_buf[src_buf_index]);
     for (i = 0; i < num_matches; i++)
     {
-        hist_buf_ptr = &(hist_buf[hash_table[hash + HASH_TABLE_WIDTH * i]]);
-        cp_offset = hash_table[hash + HASH_TABLE_WIDTH * i];
+        cp_offset = bulk->hash_table[hash + HASH_TABLE_WIDTH * i];
+        hist_buf_ptr = &(bulk->hist_buf[cp_offset]);
         if ((hist_buf_ptr[0] == src_buf_ptr[0]) &&
             (hist_buf_ptr[1] == src_buf_ptr[1]) &&
             (hist_buf_ptr[2] == src_buf_ptr[2]))
@@ -645,7 +637,7 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     if ((lflags & BULK_PACKET_FLUSHED) ||
         ((bulk->hist_index + bytes_in_seg) >= HIST_BUF_LEN))
     {
-        clear_tables(bulk->hash_table, bulk->bucket_count, bulk->hist_buf);
+        clear_tables(bulk);
         bulk->hist_index = 0;
     }
 
@@ -664,8 +656,7 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     bw_put_bits(&bw, token_ptr->code, token_ptr->code_bits);
 
     /* create hash for first two triplets in history buffer */
-    update_hash_table(bulk->hash_table, bulk->bucket_count,
-                      bulk->hist_buf, hist_start, 2);
+    update_hash_table(bulk, hist_start, 2);
 
     /* start looking for a match */
     for (i = hist_start + 2; i < hist_start + bytes_in_seg - 2; i++)
@@ -680,8 +671,7 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
         hash = u32val;
         if (bulk->bucket_count[hash] != 0)
         {
-            if (find_longest_match(bulk->hash_table, bulk->bucket_count,
-                                   bulk->hist_buf, hash, i,
+            if (find_longest_match(bulk, hash, i,
                                    hist_start + bytes_in_seg - i,
                                    &cp_offset, &lom) != 0)
             {
@@ -727,8 +717,7 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
                             token_ptr->value_bits);
                 /* Save hash for all triplets we are skipping. We have already
                    saved hash for first triplet where match occurred. */
-                update_hash_table(bulk->hash_table, bulk->bucket_count,
-                                  bulk->hist_buf, i + 1, lom - 1);
+                update_hash_table(bulk, i + 1, lom - 1);
                 i += lom - 1; /* -1 because for loop also increments once */
                 continue;
             }
