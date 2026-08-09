@@ -14,9 +14,11 @@
 #define HEXDUMP(_p, _len)
 #endif
 
+#if DO_HEXDUMP
+
 /*****************************************************************************/
 /* print a hex dump to stdout*/
-void
+static void
 g_hexdump(const void *p, int len)
 {
     unsigned char *line;
@@ -57,6 +59,8 @@ g_hexdump(const void *p, int len)
         line += thisline;
     }
 }
+
+#endif
 
 int main(int argc, char **argv)
 {
