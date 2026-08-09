@@ -6,7 +6,7 @@ EXTRA_BULK_LIBS =
 EXTRA_BULK_FLAGS =
 
 AM_CFLAGS = \
-  -I../include \
+  -I$(top_srcdir)/include \
   $(EXTRA_BULK_FLAGS)
 
 lib_LTLIBRARIES = libbulkmppccompress.la libbulkrdp8decompress.la libbulkrdp8compress.la

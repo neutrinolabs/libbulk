@@ -20,9 +20,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <bulk_rdp8_compress.h>
 
-#include "bulk_common_private.h"
+#include <bulk_rdp8_compress.h>
+#include <bulk_common_private.h>
 
 #define HASH_TABLE_WIDTH        65536
 #define HIST_BUF_LEN            2500000
