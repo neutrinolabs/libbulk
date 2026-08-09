@@ -25,7 +25,7 @@ libbulkrdp8decompress_la_LDFLAGS =
 
 libbulkrdp8decompress_ladir = $(moduledir)
 
-libbulkrdp8decompress_la_SOURCES = bulk_rdp8_decompress.c
+libbulkrdp8decompress_la_SOURCES = bulk_rdp8_decompress.c getset.h
 
 libbulkrdp8decompress_la_LIBADD =
 
@@ -34,7 +34,7 @@ libbulkrdp8compress_la_LDFLAGS =
 
 libbulkrdp8compress_ladir = $(moduledir)
 
-libbulkrdp8compress_la_SOURCES = bulk_rdp8_compress.c
+libbulkrdp8compress_la_SOURCES = bulk_rdp8_compress.c bulk_common_private.h
 
 libbulkrdp8compress_la_LIBADD =
 

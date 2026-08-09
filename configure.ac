@@ -16,6 +16,7 @@ LT_INIT
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 
 AC_CONFIG_FILES([Makefile
+                 include/Makefile
                  src/Makefile
                  tests/Makefile
 ])
