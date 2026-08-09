@@ -75,8 +75,8 @@ int main(int argc, char **argv)
     int udata_bytes;
     unsigned long index;
     char filename[256];
-    char *udata = malloc(1024 * 1024);
-    char *cdata = malloc(1024 * 1024);
+    char *udata = (char *) malloc(1024 * 1024);
+    char *cdata = (char *) malloc(1024 * 1024);
 
     char *udata1;
     int udata_bytes1;
@@ -98,7 +98,7 @@ int main(int argc, char **argv)
 
     for (index = 0; index < 6; index++)
     {
-        snprintf(filename, 256, "udata%4.4X.bin", index);
+        snprintf(filename, 256, "udata%4.4X.bin", (int)index);
         printf("main: filename %s\n", filename);
         fd = open(filename, O_RDWR);
         if (fd == -1)
