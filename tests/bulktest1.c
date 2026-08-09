@@ -16,9 +16,11 @@
 #define HEXDUMP(_p, _len)
 #endif
 
+#if DO_HEXDUMP
+
 /*****************************************************************************/
 /* print a hex dump to stdout*/
-void
+static void
 g_hexdump(const void *p, int len)
 {
     unsigned char *line;
@@ -60,14 +62,13 @@ g_hexdump(const void *p, int len)
     }
 }
 
+#endif
+
 int main(int argc, char **argv)
 {
     void *comp_han;
     void *decomp_han;
-    char *lcdata;
     int cdata_bytes;
-    char *data;
-    int data_bytes;
     int cflags;
     int error;
     int rv;
@@ -84,6 +85,7 @@ int main(int argc, char **argv)
     (void)argc;
     (void)argv;
 
+    rv = 0;
     comp_han = rdp8_compress_create(BULK_PACKET_COMPR_TYPE_RDP8);
     if (comp_han == NULL)
     {
