@@ -526,7 +526,6 @@ get_dist_token(int dist)
     if (dist < 54944)   { return &(g_dist_tokens[6]); }
     if (dist < 317088)  { return &(g_dist_tokens[7]); }
     if (dist < 1365664) { return &(g_dist_tokens[8]); }
-    if (dist < 1365664) { return &(g_dist_tokens[8]); }
     if (dist < 2414240) { return &(g_dist_tokens[9]); }
     return &(g_dist_tokens[10]);
 }
