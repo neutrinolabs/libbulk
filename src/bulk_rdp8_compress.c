@@ -371,6 +371,7 @@ struct bulk_rdp8
     unsigned char *output_buf;  /* contains compressed data */
     unsigned char *output_buf_plus;
     unsigned int buf_len;    /* length of output_buf */
+    struct rdp8_stats stats;
 };
 
 /*****************************************************************************/
@@ -760,11 +761,30 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     bulk->hist_index += data_bytes;
     if (data_bytes <= bw.index)
     {
+        bulk->stats.nbytes += data_bytes;
+        bulk->stats.nbytes_count++;
         return RDP8_ERROR_NO_COMPRESS;
     }
     *cdata = (char *) (bulk->output_buf);
     *cdata_bytes = bw.index;
     *flags = BULK_PACKET_COMPR_TYPE_RDP8 | BULK_PACKET_COMPRESSED;
+    bulk->stats.ubytes += data_bytes;
+    bulk->stats.cbytes += bw.index;
+    bulk->stats.cbytes_count++;
     return RDP8_ERROR_NONE;
 }
 
+/*****************************************************************************/
+int
+rdp8_get_stats(void *handle, struct rdp8_stats *stats)
+{
+    struct bulk_rdp8 *bulk;
+
+    if (handle == NULL)
+    {
+        return RDP8_ERROR_PARAM;
+    }
+    bulk = (struct bulk_rdp8 *) handle;
+    *stats = bulk->stats;
+    return RDP8_ERROR_NONE;
+}

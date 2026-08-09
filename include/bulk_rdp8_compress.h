@@ -27,6 +27,16 @@
 #define RDP8_ERROR_NOIMP        3
 #define RDP8_ERROR_OTHER        16
 
+struct rdp8_stats
+{
+   /* stats */
+    long long ubytes; /* uncompressed bytes */
+    long long cbytes; /* compressed bytes */
+    long long nbytes; /* bytes not compressed / failed */
+    int cbytes_count; /* number of successful compression attemps */
+    int nbytes_count; /* number of failed compresses attemps */
+};
+
 /**
  * Creates an encoder object
  *
@@ -66,6 +76,9 @@ rdp8_compress_destroy(void *handle);
 int
 rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
               const char *data, int data_bytes);
+
+int
+rdp8_get_stats(void *handle, struct rdp8_stats *stats);
 
 #endif
 
