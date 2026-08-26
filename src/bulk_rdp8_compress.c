@@ -28,6 +28,7 @@
 #define HIST_BUF_LEN            2500000
 #define BUCKET_DEPTH            4
 #define MAX_UNENCODED_LITERALS  (1024 * 30)
+#define HIST_WRAP(pos)          ((unsigned int)(pos) % HIST_BUF_LEN)
 
 struct token
 {
@@ -256,7 +257,7 @@ bw_put_bits(struct bit_writer *bw, unsigned int value, int nbits)
     /* Mask value so only the lowest nbits remain */
     if (nbits < 32)
     {
-        value &= ((1u << nbits) - 1u);
+        value &= (1 << nbits) - 1;
     }
     /* Not enough room in current 32-bit word: split */
     if (bw->bits_left < nbits)
@@ -376,6 +377,26 @@ struct bulk_rdp8
 
 /*****************************************************************************/
 static void
+hist_buf_copy(struct bulk_rdp8 *bulk, unsigned int start_pos,
+              const unsigned char *src, int count)
+{
+    int first_part;
+
+    start_pos = HIST_WRAP(start_pos);
+    first_part = HIST_BUF_LEN - start_pos;
+    if (first_part >= count)
+    {
+        memcpy(&(bulk->hist_buf[start_pos]), src, count);
+    }
+    else
+    {
+        memcpy(&(bulk->hist_buf[start_pos]), src, first_part);
+        memcpy(bulk->hist_buf, src + first_part, count - first_part);
+    }
+}
+
+/*****************************************************************************/
+static void
 clear_tables(struct bulk_rdp8 *bulk)
 {
     memset(bulk->hash_table, 0, sizeof(bulk->hash_table));
@@ -385,26 +406,28 @@ clear_tables(struct bulk_rdp8 *bulk)
 
 /*****************************************************************************/
 static void
-update_hash_table(struct bulk_rdp8 *bulk, int start_index, int num_triplets)
+update_hash_table(struct bulk_rdp8 *bulk, unsigned int start_index,
+                  int num_triplets)
 {
     unsigned int u32val;
     unsigned short hash;
     int i;
     int j;
-    unsigned char *cptr;
+    unsigned int pos;
 
-    cptr = &(bulk->hist_buf[start_index]);
     for (i = 0; i < num_triplets; i++)
     {
-        u32val = (cptr[0] << 8) ^ (cptr[1] << 4) ^ cptr[2];
+        pos = HIST_WRAP(start_index + i);
+        u32val = (bulk->hist_buf[pos] << 8) ^
+                 (bulk->hist_buf[HIST_WRAP(pos + 1)] << 4) ^
+                  bulk->hist_buf[HIST_WRAP(pos + 2)];
         u32val ^= u32val >> 7;
         u32val *= 0x9e37;
         u32val >>= 16;
         hash = u32val;
         j = bulk->bucket_count[hash] % BUCKET_DEPTH;
-        bulk->hash_table[hash + j * HASH_TABLE_WIDTH] = start_index + i;
+        bulk->hash_table[hash + j * HASH_TABLE_WIDTH] = pos;
         bulk->bucket_count[hash]++;
-        cptr++;
     }
 }
 
@@ -413,7 +436,7 @@ update_hash_table(struct bulk_rdp8 *bulk, int start_index, int num_triplets)
 static int
 find_longest_match(struct bulk_rdp8 *bulk,
                    unsigned short hash,
-                   int src_buf_index,
+                   unsigned int src_buf_index,
                    int src_buf_len,
                    int *cp_offset_ptr,
                    int *lom_ptr)
@@ -423,92 +446,145 @@ find_longest_match(struct bulk_rdp8 *bulk,
     unsigned char *src_buf_ptr;
     unsigned int cp_offset;
     unsigned int saved_cp_offset;
+    unsigned int dist;
+    unsigned int saved_dist;
     int lom;
     int saved_lom;
     int i;
     int j;
+    int can_use_fast;
 
     saved_cp_offset = 0;
+    saved_dist = 0;
     saved_lom = 0;
-    /* Get number of buckets in this hash.
-       Caller has ensured there is at least one */
     num_matches = bulk->bucket_count[hash] % BUCKET_DEPTH;
     if (num_matches == 0)
     {
         num_matches = 4;
     }
-    src_buf_ptr = &(bulk->hist_buf[src_buf_index]);
     for (i = 0; i < num_matches; i++)
     {
         cp_offset = bulk->hash_table[hash + HASH_TABLE_WIDTH * i];
-        hist_buf_ptr = &(bulk->hist_buf[cp_offset]);
-        if ((hist_buf_ptr[0] == src_buf_ptr[0]) &&
-            (hist_buf_ptr[1] == src_buf_ptr[1]) &&
-            (hist_buf_ptr[2] == src_buf_ptr[2]))
+        if (cp_offset == src_buf_index)
         {
+            continue;
+        }
+        dist = (src_buf_index - cp_offset + HIST_BUF_LEN) % HIST_BUF_LEN;
+        if (dist == 0)
+        {
+            continue;
+        }
+        can_use_fast = (cp_offset + src_buf_len <= HIST_BUF_LEN) &&
+                       (src_buf_index + src_buf_len <= HIST_BUF_LEN);
+        if (can_use_fast)
+        {
+            hist_buf_ptr = &(bulk->hist_buf[cp_offset]);
+            src_buf_ptr = &(bulk->hist_buf[src_buf_index]);
+            if ((hist_buf_ptr[0] == src_buf_ptr[0]) &&
+                (hist_buf_ptr[1] == src_buf_ptr[1]) &&
+                (hist_buf_ptr[2] == src_buf_ptr[2]))
+            {
+                j = 3;
+                lom = 3;
+                while (j < src_buf_len)
+                {
+                    if (hist_buf_ptr[j] != src_buf_ptr[j])
+                    {
+                        break;
+                    }
+                    lom++;
+                    j++;
+                }
+            }
+            else
+            {
+                continue;
+            }
+        }
+        else
+        {
+            if ((bulk->hist_buf[cp_offset] !=
+                 bulk->hist_buf[src_buf_index]) ||
+                (bulk->hist_buf[HIST_WRAP(cp_offset + 1)] !=
+                 bulk->hist_buf[HIST_WRAP(src_buf_index + 1)]) ||
+                (bulk->hist_buf[HIST_WRAP(cp_offset + 2)] !=
+                 bulk->hist_buf[HIST_WRAP(src_buf_index + 2)]))
+            {
+                continue;
+            }
             j = 3;
             lom = 3;
             while (j < src_buf_len)
             {
-                if (hist_buf_ptr[j] != src_buf_ptr[j])
+                if (bulk->hist_buf[HIST_WRAP(cp_offset + j)] !=
+                    bulk->hist_buf[HIST_WRAP(src_buf_index + j)])
                 {
                     break;
                 }
                 lom++;
                 j++;
             }
-            if (lom == saved_lom)
-            {
-                /* If LoM is the same, but cp_offset is closer to src_buf,
-                   update saved_cp_offset */
-                if (cp_offset > saved_cp_offset)
-                {
-                    saved_cp_offset = cp_offset;
-                }
-            }
-            else if (lom > saved_lom)
+        }
+        if (lom == saved_lom)
+        {
+            if (dist < saved_dist)
             {
                 saved_cp_offset = cp_offset;
-                saved_lom = lom;
+                saved_dist = dist;
             }
+        }
+        else if (lom > saved_lom)
+        {
+            saved_cp_offset = cp_offset;
+            saved_dist = dist;
+            saved_lom = lom;
         }
     }
     if (saved_lom)
     {
-        *cp_offset_ptr = src_buf_index - saved_cp_offset;
+        *cp_offset_ptr = saved_dist;
         *lom_ptr = saved_lom;
         return 0;
     }
     return 1;
-
 }
 
 /*****************************************************************************/
 static void
 insert_unencoded_literals(struct bit_writer *bw, struct token *token_ptr,
-                          const unsigned char *buf, int count)
+                          struct bulk_rdp8 *bulk, unsigned int start_pos,
+                          int count)
 {
     int ctr;
+    int first_part;
 
     if (count < 6)
     {
         for (ctr = 0; ctr < count; ctr++)
         {
-            token_ptr = &(g_literals[buf[ctr]]);
+            token_ptr = &(g_literals[bulk->hist_buf[HIST_WRAP(start_pos + ctr)]]);
             bw_put_bits(bw, token_ptr->code, token_ptr->code_bits);
         }
     }
     else
     {
-        /* match distance of zero (10001 00000) is a special case used to
-           indicate start of unencoded literals. The next 15 bits indicate
-           count of unencoded literals to follow */
         bw_put_bits(bw, 0x220, 10);
         bw_put_bits(bw, count, 15);
-        /* unencoded literals *must* start on a byte boundary */
         bw_align_to_byte(bw);
-        /* copy unencoded literals as is to output buffer */
-        memcpy(&(bw->buf[bw->index]), buf, count);
+        start_pos = HIST_WRAP(start_pos);
+        first_part = HIST_BUF_LEN - start_pos;
+        if (first_part >= count)
+        {
+            memcpy(&(bw->buf[bw->index]), &(bulk->hist_buf[start_pos]),
+                   count);
+        }
+        else
+        {
+            memcpy(&(bw->buf[bw->index]), &(bulk->hist_buf[start_pos]),
+                   first_part);
+            memcpy(&(bw->buf[bw->index + first_part]), bulk->hist_buf,
+                   count - first_part);
+        }
         bw->index += count;
     }
 }
@@ -603,21 +679,26 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     struct token *token_ptr;
     unsigned int u32val;
     unsigned short hash;
-    int hist_start;
+    unsigned int hist_start;
+    unsigned int pos;
     int cp_offset;
     int lom;
-    int i;
+    int offset;
     int j;
-    int no_match_index; /* index in hist_buf where first no match occurred */
-    int no_match_count; /* number of bytes that did not match              */
+    unsigned int no_match_index;
+    int no_match_count;
     int lflags;
 
-    /* so far, nothing has been compressed */
-    if ((handle == NULL) || (cdata == NULL) || (cdata_bytes == NULL) || (flags == NULL))
+    if ((handle == NULL) || (cdata == NULL) || (cdata_bytes == NULL) ||
+        (flags == NULL))
     {
         return RDP8_ERROR_PARAM;
     }
     if ((data == NULL) || (data_bytes < 1))
+    {
+        return RDP8_ERROR_PARAM;
+    }
+    if (data_bytes >= HIST_BUF_LEN)
     {
         return RDP8_ERROR_PARAM;
     }
@@ -632,17 +713,17 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     no_match_index = 0;
     no_match_count = 0;
 
-    if ((lflags & BULK_PACKET_FLUSHED) ||
-        ((bulk->hist_index + data_bytes) >= HIST_BUF_LEN))
+    if (lflags & BULK_PACKET_FLUSHED)
     {
         clear_tables(bulk);
         bulk->hist_index = 0;
     }
 
-    hist_start = bulk->hist_index;
+    hist_start = HIST_WRAP(bulk->hist_index);
 
-    /* copy source data to hist buf at current position */
-    memcpy(&(bulk->hist_buf[hist_start]), data, data_bytes);
+    /* copy source data to hist buf at current position (circular) */
+    hist_buf_copy(bulk, hist_start,
+                  (const unsigned char *) data, data_bytes);
 
     bw_init(&bw, bulk->output_buf);
 
@@ -650,27 +731,28 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     token_ptr = &(g_literals[bulk->hist_buf[hist_start]]);
     bw_put_bits(&bw, token_ptr->code, token_ptr->code_bits);
 
-    token_ptr = &(g_literals[bulk->hist_buf[hist_start + 1]]);
+    token_ptr = &(g_literals[bulk->hist_buf[HIST_WRAP(hist_start + 1)]]);
     bw_put_bits(&bw, token_ptr->code, token_ptr->code_bits);
 
     /* create hash for first two triplets in history buffer */
     update_hash_table(bulk, hist_start, 2);
 
     /* start looking for a match */
-    for (i = hist_start + 2; i < hist_start + data_bytes - 2; i++)
+    for (offset = 2; offset < data_bytes - 2; offset++)
     {
+        pos = HIST_WRAP(hist_start + offset);
         /* compute hash for current triplet */
-        u32val = (bulk->hist_buf[i] << 8) ^
-                 (bulk->hist_buf[i + 1] << 4) ^
-                  bulk->hist_buf[i + 2];
+        u32val = (bulk->hist_buf[pos] << 8) ^
+                 (bulk->hist_buf[HIST_WRAP(pos + 1)] << 4) ^
+                  bulk->hist_buf[HIST_WRAP(pos + 2)];
         u32val ^= u32val >> 7;
         u32val *= 0x9e37;
         u32val >>= 16;
         hash = u32val;
         if (bulk->bucket_count[hash] != 0)
         {
-            if (find_longest_match(bulk, hash, i,
-                                   hist_start + data_bytes - i,
+            if (find_longest_match(bulk, hash, pos,
+                                   data_bytes - offset,
                                    &cp_offset, &lom) != 0)
             {
                 /* did not find a match; track index and count of no match */
@@ -678,10 +760,9 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
                 if (no_match_count > MAX_UNENCODED_LITERALS)
                 {
                     insert_unencoded_literals(&bw, token_ptr,
-                                              &(bulk->hist_buf[no_match_index]),
+                                              bulk, no_match_index,
                                               no_match_count);
                     no_match_count = 0;
-                    no_match_index = 0;
                 }
             }
             else
@@ -689,7 +770,7 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
                 /* found a match */
                 /* save current hash */
                 j = bulk->bucket_count[hash] % BUCKET_DEPTH;
-                bulk->hash_table[hash + HASH_TABLE_WIDTH * j] = i;
+                bulk->hash_table[hash + HASH_TABLE_WIDTH * j] = pos;
                 bulk->bucket_count[hash]++;
                 /* Write previous 'no matches' to output buffer. If count is
                    less than 6,
@@ -698,10 +779,9 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
                 if (no_match_count)
                 {
                     insert_unencoded_literals(&bw, token_ptr,
-                                              &(bulk->hist_buf[no_match_index]),
+                                              bulk, no_match_index,
                                               no_match_count);
                     no_match_count = 0;
-                    no_match_index = 0;
                 }
                 /* write match-distance to output buffer */
                 token_ptr = get_dist_token(cp_offset);
@@ -715,29 +795,28 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
                             token_ptr->value_bits);
                 /* Save hash for all triplets we are skipping. We have already
                    saved hash for first triplet where match occurred. */
-                update_hash_table(bulk, i + 1, lom - 1);
-                i += lom - 1; /* -1 because for loop also increments once */
+                update_hash_table(bulk, HIST_WRAP(pos + 1), lom - 1);
+                offset += lom - 1; /* -1 because for loop also increments */
                 continue;
             }
         } /* if (bulk->bucket_count[hash] != 0) */
         /* did not find a match; track index and count of 'no match' */
-        if (no_match_index == 0)
+        if (no_match_count == 0)
         {
-            no_match_index = i;
+            no_match_index = pos;
         }
         no_match_count++;
         /* Limit unencoded literals to MAX_UNENCODED_LITERALS */
         if (no_match_count > MAX_UNENCODED_LITERALS)
         {
             insert_unencoded_literals(&bw, token_ptr,
-                                      &(bulk->hist_buf[no_match_index]),
+                                      bulk, no_match_index,
                                       no_match_count);
             no_match_count = 0;
-            no_match_index = 0;
         }
         /* save hash */
         j = bulk->bucket_count[hash] % BUCKET_DEPTH;
-        bulk->hash_table[hash + HASH_TABLE_WIDTH * j] = i;
+        bulk->hash_table[hash + HASH_TABLE_WIDTH * j] = pos;
         bulk->bucket_count[hash]++;
     } /* for */
     /* Write previous 'no matches' to output buffer. If count is less than 6,
@@ -745,19 +824,20 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     if (no_match_count)
     {
         insert_unencoded_literals(&bw, token_ptr,
-                                  &(bulk->hist_buf[no_match_index]),
+                                  bulk, no_match_index,
                                   no_match_count);
         no_match_count = 0;
-        no_match_index = 0;
     }
     /* handle last two bytes */
-    while (i < hist_start + data_bytes)
+    while (offset < data_bytes)
     {
-        token_ptr = &(g_literals[bulk->hist_buf[i++]]);
+        pos = HIST_WRAP(hist_start + offset);
+        token_ptr = &(g_literals[bulk->hist_buf[pos]]);
         bw_put_bits(&bw, token_ptr->code, token_ptr->code_bits);
+        offset++;
     }
     bw_flush(&bw);
-    bulk->hist_index += data_bytes;
+    bulk->hist_index = HIST_WRAP(bulk->hist_index + data_bytes);
     if (data_bytes <= bw.index)
     {
         bulk->stats.nbytes += data_bytes;
