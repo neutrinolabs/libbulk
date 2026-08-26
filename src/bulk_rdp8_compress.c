@@ -698,7 +698,7 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     {
         return RDP8_ERROR_PARAM;
     }
-    if (data_bytes >= HIST_BUF_LEN)
+    if (data_bytes >= HASH_TABLE_WIDTH)
     {
         return RDP8_ERROR_PARAM;
     }
