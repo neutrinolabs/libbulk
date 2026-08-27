@@ -32,9 +32,9 @@ struct rdp8_stats
    /* stats */
     long long ubytes; /* uncompressed bytes */
     long long cbytes; /* compressed bytes */
-    long long nbytes; /* bytes not compressed / failed */
+    long long nbytes; /* bytes not compressed / failed or skipped */
     int cbytes_count; /* number of successful compression attemps */
-    int nbytes_count; /* number of failed compresses attemps */
+    int nbytes_count; /* number of failed or skipped compresses attemps */
 };
 
 /**
