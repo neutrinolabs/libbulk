@@ -52,7 +52,7 @@ int main(int argc, char **argv)
             chunk[j] = (unsigned char)((j * 7 + i * 13) & 0xFF);
         }
 
-        flags = BULK_PACKET_COMPR_TYPE_RDP8;
+        flags = BULK_PACKET_COMPR_TYPE_RDP8 | BULK_PACKET_COMPRESSED;
         if (i == 0)
         {
             flags |= BULK_PACKET_FLUSHED;

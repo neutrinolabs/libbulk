@@ -414,20 +414,42 @@ update_hash_table(struct bulk_rdp8 *bulk, unsigned int start_index,
     int i;
     int j;
     unsigned int pos;
+    int can_use_fast;
 
-    for (i = 0; i < num_triplets; i++)
+    can_use_fast = start_index + num_triplets + 2 <= HIST_BUF_LEN;
+    if (can_use_fast)
     {
-        pos = HIST_WRAP(start_index + i);
-        u32val = (bulk->hist_buf[pos] << 8) ^
-                 (bulk->hist_buf[HIST_WRAP(pos + 1)] << 4) ^
-                  bulk->hist_buf[HIST_WRAP(pos + 2)];
-        u32val ^= u32val >> 7;
-        u32val *= 0x9e37;
-        u32val >>= 16;
-        hash = u32val;
-        j = bulk->bucket_count[hash] % BUCKET_DEPTH;
-        bulk->hash_table[hash + j * HASH_TABLE_WIDTH] = pos;
-        bulk->bucket_count[hash]++;
+        for (i = 0; i < num_triplets; i++)
+        {
+            pos = start_index + i;
+            u32val = (bulk->hist_buf[pos] << 8) ^
+                     (bulk->hist_buf[pos + 1] << 4) ^
+                      bulk->hist_buf[pos + 2];
+            u32val ^= u32val >> 7;
+            u32val *= 0x9e37;
+            u32val >>= 16;
+            hash = u32val;
+            j = bulk->bucket_count[hash] % BUCKET_DEPTH;
+            bulk->hash_table[hash + j * HASH_TABLE_WIDTH] = pos;
+            bulk->bucket_count[hash]++;
+        }
+    }
+    else
+    {
+        for (i = 0; i < num_triplets; i++)
+        {
+            pos = HIST_WRAP(start_index + i);
+            u32val = (bulk->hist_buf[pos] << 8) ^
+                     (bulk->hist_buf[HIST_WRAP(pos + 1)] << 4) ^
+                      bulk->hist_buf[HIST_WRAP(pos + 2)];
+            u32val ^= u32val >> 7;
+            u32val *= 0x9e37;
+            u32val >>= 16;
+            hash = u32val;
+            j = bulk->bucket_count[hash] % BUCKET_DEPTH;
+            bulk->hash_table[hash + j * HASH_TABLE_WIDTH] = pos;
+            bulk->bucket_count[hash]++;
+        }
     }
 }
 
@@ -694,7 +716,7 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     {
         return RDP8_ERROR_PARAM;
     }
-    if ((data == NULL) || (data_bytes < 1))
+    if ((data == NULL) || (data_bytes < 3))
     {
         return RDP8_ERROR_PARAM;
     }
@@ -705,7 +727,7 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     lflags = *flags;
     if ((lflags & BULK_COMPRESSION_TYPE_MASK) != BULK_PACKET_COMPR_TYPE_RDP8)
     {
-        return RDP8_ERROR_NOIMP;
+        return RDP8_ERROR_PARAM;
     }
 
     bulk = (struct bulk_rdp8 *) handle;
@@ -724,6 +746,13 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     /* copy source data to hist buf at current position (circular) */
     hist_buf_copy(bulk, hist_start,
                   (const unsigned char *) data, data_bytes);
+
+    if ((lflags & BULK_PACKET_COMPRESSED) == 0)
+    {
+        update_hash_table(bulk, hist_start, data_bytes - 2);
+        bulk->hist_index = HIST_WRAP(bulk->hist_index + data_bytes);
+        return RDP8_ERROR_NO_COMPRESS;
+    }
 
     bw_init(&bw, bulk->output_buf);
 

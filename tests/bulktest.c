@@ -133,7 +133,7 @@ int main(int argc, char **argv)
         printf("main: ----------------------------------------------------\n");
         printf("main: performing test %ld\n", index);
         rv = 1;
-        flags = BULK_PACKET_COMPR_TYPE_RDP8 | BULK_PACKET_FLUSHED;
+        flags = BULK_PACKET_COMPR_TYPE_RDP8 | BULK_PACKET_FLUSHED | BULK_PACKET_COMPRESSED;
         error = rdp8_compress(comp_han, &lcdata, &lcdata_bytes, &flags,
                               (const char *) (data[index]), data_bytes[index]);
         printf("main: rdp8_compress rv %d\n", error);
@@ -199,6 +199,7 @@ int main(int argc, char **argv)
         if (error == 0)
         {
             lcdata_bytes = 0;
+            flags = BULK_PACKET_COMPR_TYPE_RDP8 | BULK_PACKET_COMPRESSED;
             error = rdp8_compress(comp_han, &lcdata, &lcdata_bytes, &flags,
                                   (const char *) (data[index]),
                                   data_bytes[index]);
