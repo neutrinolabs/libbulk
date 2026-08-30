@@ -25,6 +25,7 @@
 #define RDP8_ERROR_NO_COMPRESS  1
 #define RDP8_ERROR_PARAM        2
 #define RDP8_ERROR_NOIMP        3
+#define RDP8_ERROR_ALLOC        4
 #define RDP8_ERROR_OTHER        16
 
 struct rdp8_stats
@@ -76,6 +77,12 @@ rdp8_compress_destroy(void *handle);
 int
 rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
               const char *data, int data_bytes);
+
+int
+rdp8_compress_multi_seg_allloc(void *handle,
+                               char **cdata, int *cdata_bytes,
+                               int *flags,
+                               const char *data, int data_bytes);
 
 int
 rdp8_get_stats(void *handle, struct rdp8_stats *stats);
