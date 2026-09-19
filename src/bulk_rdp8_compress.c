@@ -959,6 +959,8 @@ rdp8_compress_multi_seg_allloc(void *handle,
                               ldata, segment_size);
         if (error == RDP8_ERROR_NONE)
         {
+            GSET_UINT32(output_buf, output_index, 1 + lcdata_bytes);
+            output_index += 4;
             GSET_UINT8(output_buf, output_index, *flags);
             output_index++;
             memcpy(output_buf + output_index, lcdata, lcdata_bytes);
@@ -966,6 +968,8 @@ rdp8_compress_multi_seg_allloc(void *handle,
         }
         else if (error == RDP8_ERROR_NO_COMPRESS)
         {
+            GSET_UINT32(output_buf, output_index, 1 + segment_size);
+            output_index += 4;
             GSET_UINT8(output_buf, output_index, BULK_PACKET_COMPR_TYPE_RDP8);
             output_index++;
             memcpy(output_buf + output_index, ldata, segment_size);
