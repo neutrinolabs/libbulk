@@ -31,6 +31,7 @@
 #define BUCKET_DEPTH            4
 #define MAX_UNENCODED_LITERALS  (1024 * 30)
 #define HIST_WRAP(pos)          ((unsigned int)(pos) % HIST_BUF_LEN)
+#define MAX_MULTI_BYTES         (16 * 1024 * 1024)
 
 struct token
 {
@@ -214,7 +215,7 @@ static struct token g_literals[256] =
 struct bit_writer
 {
     unsigned char *buf; /* output byte buffer */
-    int  index;         /* next byte to write */
+    int index;          /* next byte to write */
     unsigned int data;  /* 32-bit bit cache */
     int bits_left;      /* free bits remaining in 'data' (MSB-first) */
 };
@@ -372,8 +373,7 @@ struct bulk_rdp8
     unsigned char hist_buf[HIST_BUF_LEN];
     unsigned int hist_index;
     unsigned char *output_buf;  /* contains compressed data */
-    unsigned char *output_buf_plus;
-    unsigned int buf_len;    /* length of output_buf */
+    unsigned char output_buf_plus[HASH_TABLE_WIDTH * 2];
     struct rdp8_stats stats;
 };
 
@@ -469,7 +469,6 @@ find_longest_match(struct bulk_rdp8 *bulk,
     unsigned char *hist_buf_ptr;
     unsigned char *src_buf_ptr;
     unsigned int cp_offset;
-    unsigned int saved_cp_offset;
     unsigned int dist;
     unsigned int saved_dist;
     int lom;
@@ -478,7 +477,6 @@ find_longest_match(struct bulk_rdp8 *bulk,
     int j;
     int can_use_fast;
 
-    saved_cp_offset = 0;
     saved_dist = 0;
     saved_lom = 0;
     num_matches = bulk->bucket_count[hash] % BUCKET_DEPTH;
@@ -553,13 +551,11 @@ find_longest_match(struct bulk_rdp8 *bulk,
         {
             if (dist < saved_dist)
             {
-                saved_cp_offset = cp_offset;
                 saved_dist = dist;
             }
         }
         else if (lom > saved_lom)
         {
-            saved_cp_offset = cp_offset;
             saved_dist = dist;
             saved_lom = lom;
         }
@@ -655,26 +651,35 @@ get_lom_token(int lom)
 void *
 rdp8_compress_create(int flags)
 {
+    void *bulk;
+    int error;
+
+    error = rdp8_compress_create_ex(flags, &bulk);
+    if (error != RDP8_ERROR_NONE)
+    {
+        return NULL;
+    }
+    return bulk;
+}
+
+/*****************************************************************************/
+int
+rdp8_compress_create_ex(int flags, void **handle)
+{
     struct bulk_rdp8 *bulk;
 
     if ((flags & BULK_COMPRESSION_TYPE_MASK) != BULK_PACKET_COMPR_TYPE_RDP8)
     {
-        return NULL;
+        return RDP8_ERROR_PARAM;
     }
     bulk = (struct bulk_rdp8 *) calloc(sizeof(struct bulk_rdp8), 1);
     if (bulk == NULL)
     {
-        return NULL;
-    }
-    bulk->buf_len = 64 * 1024;
-    bulk->output_buf_plus = (unsigned char *) calloc(bulk->buf_len * 2, 1);
-    if (bulk->output_buf_plus == NULL)
-    {
-        free(bulk);
-        return NULL;
+        return RDP8_ERROR_ALLOC;
     }
     bulk->output_buf = bulk->output_buf_plus + 64;
-    return bulk;
+    *handle = bulk;
+    return RDP8_ERROR_NONE;
 }
 
 /*****************************************************************************/
@@ -688,7 +693,6 @@ rdp8_compress_destroy(void *handle)
     {
         return 0;
     }
-    free(bulk->output_buf_plus);
     free(bulk);
     return 0;
 }
@@ -893,7 +897,7 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
 int
 rdp8_compress_multi_seg_allloc(void *handle,
                                char **cdata, int *cdata_bytes,
-                               int *flags,
+                               int flags,
                                const char *data, int data_bytes)
 {
     int num_segments;
@@ -907,8 +911,17 @@ rdp8_compress_multi_seg_allloc(void *handle,
     int output_index;
     int segment_size;
     int segment_max;
+    int lflags;
 
-    if ((data == NULL) || (data_bytes < 3) || (data_bytes > 16 * 1024 * 1024))
+    if ((handle == NULL) || (cdata == NULL) || (cdata_bytes == NULL))
+    {
+        return RDP8_ERROR_PARAM;
+    }
+    if ((data == NULL) || (data_bytes < 3) || (data_bytes > MAX_MULTI_BYTES))
+    {
+        return RDP8_ERROR_PARAM;
+    }
+    if ((flags & BULK_COMPRESSION_TYPE_MASK) != BULK_PACKET_COMPR_TYPE_RDP8)
     {
         return RDP8_ERROR_PARAM;
     }
@@ -925,51 +938,25 @@ rdp8_compress_multi_seg_allloc(void *handle,
         return RDP8_ERROR_ALLOC;
     }
     output_index = 0;
-    if (num_segments == 1)
-    {
-        GSET_UINT8(output_buf, output_index, 0xE0);
-        output_index++;
-    }
-    else
-    {
-        GSET_UINT8(output_buf, output_index, 0xE1);
-        output_index++;
-        GSET_UINT16(output_buf, output_index, num_segments);
-        output_index += 2;
-        GSET_UINT32(output_buf, output_index, data_bytes);
-        output_index += 4;
-    }
     ldata = data;
     ldata_bytes = data_bytes;
-    for (index = 0; index < num_segments; index++)
+    if (num_segments == 1)
     {
-        lcdata = NULL;
-        lcdata_bytes = 0;
+        GSET_UINT8(output_buf, output_index, BULK_SEGMENTED_SINGLE);
+        output_index++;
         segment_size = ldata_bytes;
-        if (segment_size > segment_max)
-        {
-            segment_size = segment_max;
-            if (ldata_bytes - segment_size < 3)
-            {
-                /* so we don't end up with the last segment < 3 */
-                segment_size -= 4;
-            }
-        }
-        error = rdp8_compress(handle, &lcdata, &lcdata_bytes, flags,
+        lflags = flags;
+        error = rdp8_compress(handle, &lcdata, &lcdata_bytes, &lflags,
                               ldata, segment_size);
         if (error == RDP8_ERROR_NONE)
         {
-            GSET_UINT32(output_buf, output_index, 1 + lcdata_bytes);
-            output_index += 4;
-            GSET_UINT8(output_buf, output_index, *flags);
+            GSET_UINT8(output_buf, output_index, lflags);
             output_index++;
             memcpy(output_buf + output_index, lcdata, lcdata_bytes);
             output_index += lcdata_bytes;
         }
         else if (error == RDP8_ERROR_NO_COMPRESS)
         {
-            GSET_UINT32(output_buf, output_index, 1 + segment_size);
-            output_index += 4;
             GSET_UINT8(output_buf, output_index, BULK_PACKET_COMPR_TYPE_RDP8);
             output_index++;
             memcpy(output_buf + output_index, ldata, segment_size);
@@ -982,6 +969,70 @@ rdp8_compress_multi_seg_allloc(void *handle,
         }
         ldata += segment_size;
         ldata_bytes -= segment_size;
+    }
+    else
+    {
+        GSET_UINT8(output_buf, output_index, BULK_SEGMENTED_MULTIPART);
+        output_index++;
+        GSET_UINT16(output_buf, output_index, num_segments);
+        output_index += 2;
+        GSET_UINT32(output_buf, output_index, data_bytes);
+        output_index += 4;
+        for (index = 0; index < num_segments; index++)
+        {
+            if (ldata_bytes < 3)
+            {
+                /* should not happen */
+                free(output_buf);
+                return RDP8_ERROR_OTHER;
+            }
+            lcdata = NULL;
+            lcdata_bytes = 0;
+            segment_size = ldata_bytes;
+            if (segment_size > segment_max)
+            {
+                segment_size = segment_max;
+                if (ldata_bytes - segment_size < 3)
+                {
+                    /* so we don't end up with the last segment < 3 */
+                    segment_size -= 4;
+                }
+            }
+            lflags = flags;
+            error = rdp8_compress(handle, &lcdata, &lcdata_bytes, &lflags,
+                                ldata, segment_size);
+            if (error == RDP8_ERROR_NONE)
+            {
+                GSET_UINT32(output_buf, output_index, 1 + lcdata_bytes);
+                output_index += 4;
+                GSET_UINT8(output_buf, output_index, lflags);
+                output_index++;
+                memcpy(output_buf + output_index, lcdata, lcdata_bytes);
+                output_index += lcdata_bytes;
+            }
+            else if (error == RDP8_ERROR_NO_COMPRESS)
+            {
+                GSET_UINT32(output_buf, output_index, 1 + segment_size);
+                output_index += 4;
+                GSET_UINT8(output_buf, output_index, BULK_PACKET_COMPR_TYPE_RDP8);
+                output_index++;
+                memcpy(output_buf + output_index, ldata, segment_size);
+                output_index += segment_size;
+            }
+            else
+            {
+                free(output_buf);
+                return error;
+            }
+            ldata += segment_size;
+            ldata_bytes -= segment_size;
+        }
+    }
+    if (ldata_bytes != 0)
+    {
+        /* should not happen */
+        free(output_buf);
+        return RDP8_ERROR_OTHER;
     }
     *cdata = output_buf;
     *cdata_bytes = output_index;

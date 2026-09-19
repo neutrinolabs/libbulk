@@ -50,6 +50,9 @@ struct rdp8_stats
 void *
 rdp8_compress_create(int flags);
 
+int
+rdp8_compress_create_ex(int flags, void **handle);
+
 /**
  * Deletes an encoder object
  *
@@ -78,10 +81,27 @@ int
 rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
               const char *data, int data_bytes);
 
+/**
+ * Allocate and compress a Multi part PDU
+ *
+ * @param handle Pointer to an encoder object or NULL
+ * @param cdata Pointer to a pointer that received the address of the
+ *              compressed data.  The data has a 64 bytes empty header
+ *              preceding this pointer that can be used by the application
+ *              The application takes ownership if the compressed data and
+ *              is responsable to free it
+ * @param cdata_bytes Pointer to an integer that receives the compressed
+ *                    data size
+ * @param flags The compression flags
+ * @param data Pointer to the data to compress
+ * @param data_bytes The number of bytes to compress
+ * @return Returns RDP8_ERROR_NONE on successful compression else
+ *         one of RDP8_ERROR_*
+ */
 int
 rdp8_compress_multi_seg_allloc(void *handle,
                                char **cdata, int *cdata_bytes,
-                               int *flags,
+                               int flags,
                                const char *data, int data_bytes);
 
 int
