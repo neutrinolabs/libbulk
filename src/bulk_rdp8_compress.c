@@ -26,9 +26,11 @@
 
 #include "getset.h"
 
+#define RDP8_DEBUG 0
+
 #define HASH_TABLE_WIDTH        65536
 #define HIST_BUF_LEN            2500000
-#define BUCKET_DEPTH            4
+#define BUCKET_DEPTH            (HIST_BUF_LEN / HASH_TABLE_WIDTH)
 #define MAX_UNENCODED_LITERALS  (1024 * 30)
 #define HIST_WRAP(pos)          ((unsigned int)(pos) % HIST_BUF_LEN)
 #define MAX_MULTI_BYTES         (16 * 1024 * 1024)
@@ -482,8 +484,16 @@ find_longest_match(struct bulk_rdp8 *bulk,
     num_matches = bulk->bucket_count[hash] % BUCKET_DEPTH;
     if (num_matches == 0)
     {
-        num_matches = 4;
+        num_matches = BUCKET_DEPTH;
     }
+#if RDP8_DEBUG
+    static int max_num_matches = 0;
+    if (num_matches > max_num_matches)
+    {
+        printf("num_matches %d\n", num_matches);
+        max_num_matches = num_matches;
+    }
+#endif
     for (i = 0; i < num_matches; i++)
     {
         cp_offset = bulk->hash_table[hash + HASH_TABLE_WIDTH * i];
@@ -560,7 +570,7 @@ find_longest_match(struct bulk_rdp8 *bulk,
             saved_lom = lom;
         }
     }
-    if (saved_lom)
+    if (saved_lom != 0)
     {
         *cp_offset_ptr = saved_dist;
         *lom_ptr = saved_lom;
@@ -577,12 +587,14 @@ insert_unencoded_literals(struct bit_writer *bw, struct token *token_ptr,
 {
     int ctr;
     int first_part;
+    unsigned char offset;
 
     if (count < 6)
     {
         for (ctr = 0; ctr < count; ctr++)
         {
-            token_ptr = &(g_literals[bulk->hist_buf[HIST_WRAP(start_pos + ctr)]]);
+            offset = bulk->hist_buf[HIST_WRAP(start_pos + ctr)];
+            token_ptr = &(g_literals[offset]);
             bw_put_bits(bw, token_ptr->code, token_ptr->code_bits);
         }
     }
@@ -613,6 +625,14 @@ insert_unencoded_literals(struct bit_writer *bw, struct token *token_ptr,
 static struct token *
 get_dist_token(int dist)
 {
+#if RDP8_DEBUG
+    static int max_dist = 0;
+    if (dist > max_dist)
+    {
+        printf("dist %d\n", dist);
+        max_dist = dist;
+    }
+#endif
     if (dist < 32)      { return &(g_dist_tokens[0]); }
     if (dist < 160)     { return &(g_dist_tokens[1]); }
     if (dist < 672)     { return &(g_dist_tokens[2]); }
@@ -630,6 +650,14 @@ get_dist_token(int dist)
 static struct token *
 get_lom_token(int lom)
 {
+#if RDP8_DEBUG
+    static int max_lom = 0;
+    if (lom > max_lom)
+    {
+        printf("lom %d\n", lom);
+        max_lom = lom;
+    }
+#endif
     if (lom < 4)        { return &(g_lom_tokens[0]); }
     if (lom < 8)        { return &(g_lom_tokens[1]); }
     if (lom < 16)       { return &(g_lom_tokens[2]); }
