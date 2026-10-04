@@ -79,9 +79,6 @@ int main(int argc, char **argv)
     char *udata = (char *) malloc(1024 * 1024);
     int udata_bytes;
 
-    char *cdata = (char *) malloc(1024 * 1024);
-    int cdata_bytes;
-
     char *cdata1;
     int cdata_bytes1;
     int cflags1;
@@ -114,24 +111,12 @@ int main(int argc, char **argv)
         fd = open(filename, O_RDWR);
         if (fd == -1)
         {
-            printf("main: error open\n");
+            printf("main: error open, done, %ld files processed\n", index);
             break;;
         }
         udata_bytes = read(fd, udata, 1024 * 1024);
         close(fd);
         //printf("main: udata_bytes %d\n", udata_bytes);
-
-        snprintf(filename, 256, "%s/cdata%4.4X.bin", DATA_DIR, (int)index);
-        //printf("main: filename %s\n", filename);
-        fd = open(filename, O_RDWR);
-        if (fd == -1)
-        {
-            printf("main: error open\n");
-            break;;
-        }
-        cdata_bytes = read(fd, cdata, 1024 * 1024);
-        close(fd);
-        //printf("main: cdata_bytes %d\n", cdata_bytes);
 
         cflags1 = BULK_PACKET_COMPR_TYPE_RDP8 | BULK_PACKET_COMPRESSED;
         error = rdp8_compress(comp_han, &cdata1, &cdata_bytes1, &cflags1, udata, udata_bytes);
@@ -142,7 +127,7 @@ int main(int argc, char **argv)
             error = rdp8_decompress(decomp_han, cdata1, cdata_bytes1, cflags1, &udata1, &udata_bytes1);
             if (error == 0)
             {
-                printf("main: ok udata_bytes %d udata_bytes1 %d\n", udata_bytes, udata_bytes1);
+                //printf("main: ok udata_bytes %d udata_bytes1 %d\n", udata_bytes, udata_bytes1);
             }
             else
             {
@@ -157,6 +142,8 @@ int main(int argc, char **argv)
             else if (memcmp(udata, udata1, udata_bytes) != 0)
             {
                 int index1;
+                int dump_start;
+                int dump_len;
                 for (index1 = 0; index1 < udata_bytes; index1++)
                 {
                     if (udata[index1] != udata1[index1])
@@ -164,17 +151,32 @@ int main(int argc, char **argv)
                         break;
                     }
                 }
-                printf("main: udata missmatch udata_bytes %d index %d index1 %d\n", udata_bytes, index, index1);
-                index1 = udata_bytes;
-                if (index1 > 64) index1 = 64;
-                HEXDUMP(udata, index1);
-                HEXDUMP(udata1, index1);
+                printf("main: udata missmatch udata_bytes %d index %ld index1 %d\n", udata_bytes, index, index1);
+                printf("main: cdata_bytes1 %d cflags1 0x%2.2X\n", cdata_bytes1, cflags1);
+                /* show bytes around the mismatch */
+                dump_start = index1 - 16;
+                if (dump_start < 0) dump_start = 0;
+                dump_len = 64;
+                if (dump_start + dump_len > udata_bytes)
+                    dump_len = udata_bytes - dump_start;
+                printf("expected at offset %d:\n", dump_start);
+                HEXDUMP(udata + dump_start, dump_len);
+                printf("got at offset %d:\n", dump_start);
+                HEXDUMP(udata1 + dump_start, dump_len);
                 return 1;
             }
         }
         else if (error == RDP8_ERROR_NO_COMPRESS)
         {
-            printf("main: no compress filename %s cdata_bytes %d\n", filename, cdata_bytes);
+            //printf("main: no compress filename %s cdata_bytes %d\n", filename, cdata_bytes);
+            /* feed uncompressed data to decompressor to keep histories in sync */
+            cflags1 = BULK_PACKET_COMPR_TYPE_RDP8;
+            error = rdp8_decompress(decomp_han, udata, udata_bytes, cflags1, &udata1, &udata_bytes1);
+            if (error != 0)
+            {
+                printf("main: rdp8_decompress (no compress) failed error %d\n", error);
+                return 1;
+            }
         }
         else
         {
