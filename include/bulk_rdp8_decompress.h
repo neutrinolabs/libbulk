@@ -21,6 +21,11 @@
 
 #include <bulk_common.h>
 
+struct rdp8_decomp_debug
+{
+    unsigned int history_index;
+};
+
 void *
 rdp8_decompress_create(int flags);
 int
@@ -35,6 +40,8 @@ rdp8_decompress_multi_seg_allloc(void *handle,
                                  const char *cdata, int cdata_bytes,
                                  int flags,
                                  char **data, int *data_bytes);
+int
+rdp8_decompress_get_debug(void *handle, struct rdp8_decomp_debug *debug);
 
 #endif
 

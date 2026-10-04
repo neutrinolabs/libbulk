@@ -439,7 +439,7 @@ rdp8_decompress_multi_seg_allloc(void *handle,
     }
     if ((flags & BULK_COMPRESSION_TYPE_MASK) != BULK_PACKET_COMPR_TYPE_RDP8)
     {
-        return 0;
+        return 1;
     }
     descriptor = GGET_UINT8(cdata, 0);
     if (descriptor == SEGMENTED_SINGLE)
@@ -481,3 +481,13 @@ rdp8_decompress_multi_seg_allloc(void *handle,
     return 0;
 }
 
+/*****************************************************************************/
+int
+rdp8_decompress_get_debug(void *handle, struct rdp8_decomp_debug *debug)
+{
+    struct bulk_rdp8 *bulk;
+
+    bulk = (struct bulk_rdp8 *) handle;
+    debug->history_index = bulk->m_historyIndex;
+    return 0;
+}
