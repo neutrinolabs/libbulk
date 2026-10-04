@@ -371,7 +371,7 @@ bw_align_to_byte(struct bit_writer *bw)
 struct bulk_rdp8
 {
     unsigned int hash_table[HASH_TABLE_WIDTH * BUCKET_DEPTH];
-    unsigned char bucket_count[HASH_TABLE_WIDTH];
+    unsigned short bucket_count[HASH_TABLE_WIDTH];
     unsigned char hist_buf[HIST_BUF_LEN];
     unsigned int hist_index;
     unsigned char *output_buf;  /* contains compressed data */
@@ -486,6 +486,9 @@ find_longest_match(struct bulk_rdp8 *bulk,
     {
         num_matches = BUCKET_DEPTH;
     }
+    /* Maximum valid distance: must not reference positions in the
+       current chunk that haven't been processed yet (the decompressor
+       builds history incrementally and can't see future data) */
 #if RDP8_DEBUG
     static int max_num_matches = 0;
     if (num_matches > max_num_matches)
@@ -504,6 +507,13 @@ find_longest_match(struct bulk_rdp8 *bulk,
         dist = (src_buf_index - cp_offset + HIST_BUF_LEN) % HIST_BUF_LEN;
         if (dist == 0)
         {
+            continue;
+        }
+        if (dist > (unsigned int)(HIST_BUF_LEN - src_buf_len))
+        {
+            /* This match position is in the unprocessed part of the
+               current chunk (pre-copied by hist_buf_copy but not yet
+               seen by the decompressor). Skip it. */
             continue;
         }
         can_use_fast = (cp_offset + src_buf_len <= HIST_BUF_LEN) &&
