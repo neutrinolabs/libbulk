@@ -8,6 +8,8 @@
 #include <bulk_rdp8_compress.h>
 #include <bulk_rdp8_decompress.h>
 
+#define DATA_DIR "test2/tmp/rdp8"
+
 #define DO_HEXDUMP 1
 
 #if DO_HEXDUMP
@@ -64,8 +66,6 @@ g_hexdump(const void *p, int len)
 
 #endif
 
-#define DATA_DIR "/home/jay/rdp8_data/test3/tmp/rdp8"
-
 int main(int argc, char **argv)
 {
     void *comp_han;
@@ -85,6 +85,9 @@ int main(int argc, char **argv)
 
     char *udata1;
     int udata_bytes1;
+
+    long long utotal = 0;
+    long long ctotal = 0;
 
     (void)argc;
     (void)argv;
@@ -117,6 +120,7 @@ int main(int argc, char **argv)
         udata_bytes = read(fd, udata, 1024 * 1024);
         close(fd);
         //printf("main: udata_bytes %d\n", udata_bytes);
+        utotal += udata_bytes;
 
         cflags1 = BULK_PACKET_COMPR_TYPE_RDP8 | BULK_PACKET_COMPRESSED;
         error = rdp8_compress(comp_han, &cdata1, &cdata_bytes1, &cflags1, udata, udata_bytes);
@@ -124,8 +128,9 @@ int main(int argc, char **argv)
 
         if (error == RDP8_ERROR_NONE)
         {
+            ctotal += cdata_bytes1;
             error = rdp8_decompress(decomp_han, cdata1, cdata_bytes1, cflags1, &udata1, &udata_bytes1);
-            if (error == 0)
+            if (error == RDP8_ERROR_NONE)
             {
                 //printf("main: ok udata_bytes %d udata_bytes1 %d\n", udata_bytes, udata_bytes1);
             }
@@ -168,11 +173,12 @@ int main(int argc, char **argv)
         }
         else if (error == RDP8_ERROR_NO_COMPRESS)
         {
+            ctotal += udata_bytes;
             //printf("main: no compress filename %s cdata_bytes %d\n", filename, cdata_bytes);
             /* feed uncompressed data to decompressor to keep histories in sync */
             cflags1 = BULK_PACKET_COMPR_TYPE_RDP8;
             error = rdp8_decompress(decomp_han, udata, udata_bytes, cflags1, &udata1, &udata_bytes1);
-            if (error != 0)
+            if (error != RDP8_ERROR_NONE)
             {
                 printf("main: rdp8_decompress (no compress) failed error %d\n", error);
                 return 1;
@@ -187,5 +193,10 @@ int main(int argc, char **argv)
 
     rdp8_decompress_destroy(decomp_han);
     rdp8_compress_destroy(comp_han);
+
+    float ratio = utotal;
+    ratio /= ctotal;
+    printf("main: ratio %f\n", ratio);
+
     return rv;
 }
