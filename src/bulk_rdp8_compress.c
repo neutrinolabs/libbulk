@@ -26,11 +26,9 @@
 
 #include "getset.h"
 
-#define RDP8_DEBUG 0
-
 #define HASH_TABLE_WIDTH        65536
 #define HIST_BUF_LEN            2500000
-#define BUCKET_DEPTH            (HIST_BUF_LEN / HASH_TABLE_WIDTH)
+#define BUCKET_DEPTH            4
 #define MAX_UNENCODED_LITERALS  (1024 * 30)
 #define HIST_WRAP(pos)          ((unsigned int)(pos) % HIST_BUF_LEN)
 #define MAX_MULTI_BYTES         (16 * 1024 * 1024)
@@ -489,14 +487,6 @@ find_longest_match(struct bulk_rdp8 *bulk,
     /* Maximum valid distance: must not reference positions in the
        current chunk that haven't been processed yet (the decompressor
        builds history incrementally and can't see future data) */
-#if RDP8_DEBUG
-    static int max_num_matches = 0;
-    if (num_matches > max_num_matches)
-    {
-        printf("num_matches %d\n", num_matches);
-        max_num_matches = num_matches;
-    }
-#endif
     for (i = 0; i < num_matches; i++)
     {
         cp_offset = bulk->hash_table[hash + HASH_TABLE_WIDTH * i];
@@ -635,14 +625,6 @@ insert_unencoded_literals(struct bit_writer *bw, struct token *token_ptr,
 static struct token *
 get_dist_token(int dist)
 {
-#if RDP8_DEBUG
-    static int max_dist = 0;
-    if (dist > max_dist)
-    {
-        printf("dist %d\n", dist);
-        max_dist = dist;
-    }
-#endif
     if (dist < 32)      { return &(g_dist_tokens[0]); }
     if (dist < 160)     { return &(g_dist_tokens[1]); }
     if (dist < 672)     { return &(g_dist_tokens[2]); }
@@ -660,14 +642,6 @@ get_dist_token(int dist)
 static struct token *
 get_lom_token(int lom)
 {
-#if RDP8_DEBUG
-    static int max_lom = 0;
-    if (lom > max_lom)
-    {
-        printf("lom %d\n", lom);
-        max_lom = lom;
-    }
-#endif
     if (lom < 4)        { return &(g_lom_tokens[0]); }
     if (lom < 8)        { return &(g_lom_tokens[1]); }
     if (lom < 16)       { return &(g_lom_tokens[2]); }
