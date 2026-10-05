@@ -304,7 +304,7 @@ OutputFromCompressed(struct bulk_rdp8 *bulk, const byte *pbEncoded,
             break;
         }
     }
-    return 0;
+    return RDP8_ERROR_NONE;
 }
 
 /*****************************************************************************/
@@ -325,7 +325,7 @@ OutputFromNotCompressed(struct bulk_rdp8 *bulk, const byte *pbRaw, int cbRaw)
         }
         bulk->m_outputBuffer[bulk->m_outputCount++] = c;
     }
-    return 0;
+    return RDP8_ERROR_NONE;
 }
 
 /*****************************************************************************/
@@ -347,18 +347,35 @@ OutputFromSegment(struct bulk_rdp8 *bulk, const byte *pbSegment,
 void *
 rdp8_decompress_create(int flags)
 {
-    struct bulk_rdp8 *bulk;
+    void *bulk;
+    int error;
 
-    if ((flags & BULK_COMPRESSION_TYPE_MASK) != BULK_PACKET_COMPR_TYPE_RDP8)
-    {
-        return NULL;
-    }
-    bulk = (struct bulk_rdp8 *) calloc(sizeof(struct bulk_rdp8), 1);
-    if (bulk == NULL)
+    error = rdp8_decompress_create_ex(flags, &bulk);
+    if (error != RDP8_ERROR_NONE)
     {
         return NULL;
     }
     return bulk;
+}
+
+
+/*****************************************************************************/
+int
+rdp8_decompress_create_ex(int flags, void **handle)
+{
+    struct bulk_rdp8 *bulk;
+
+    if ((flags & BULK_COMPRESSION_TYPE_MASK) != BULK_PACKET_COMPR_TYPE_RDP8)
+    {
+        return RDP8_ERROR_PARAM;
+    }
+    bulk = (struct bulk_rdp8 *) calloc(sizeof(struct bulk_rdp8), 1);
+    if (bulk == NULL)
+    {
+        return RDP8_ERROR_ALLOC;
+    }
+    *handle = bulk;
+    return RDP8_ERROR_NONE;
 }
 
 /*****************************************************************************/
@@ -384,33 +401,36 @@ rdp8_decompress(void *handle,
                 char **data, int *data_bytes)
 {
     struct bulk_rdp8 *bulk;
+    int error;
 
     bulk = (struct bulk_rdp8 *) handle;
     if (bulk == NULL)
     {
-        return 1;
+        return RDP8_ERROR_PARAM;
     }
     if ((flags & BULK_COMPRESSION_TYPE_MASK) != BULK_PACKET_COMPR_TYPE_RDP8)
     {
-        return 1;
+        return RDP8_ERROR_PARAM;
     }
     if (flags & BULK_PACKET_COMPRESSED)
     {
-        if (OutputFromCompressed(bulk, (const byte *) cdata, cdata_bytes) != 0)
+        error = OutputFromCompressed(bulk, (const byte *) cdata, cdata_bytes);
+        if (error != RDP8_ERROR_NONE)
         {
-            return 1;
+            return error;
         }
     }
     else
     {
-        if (OutputFromNotCompressed(bulk, (const byte *) cdata, cdata_bytes) != 0)
+        error = OutputFromNotCompressed(bulk, (const byte *) cdata, cdata_bytes);
+        if (error != RDP8_ERROR_NONE)
         {
-            return 1;
+            return error;
         }
     }
     *data = (char *) bulk->m_outputBuffer;
     *data_bytes = bulk->m_outputCount;
-    return 0;
+    return RDP8_ERROR_NONE;
 }
 
 /*****************************************************************************/
@@ -435,11 +455,11 @@ rdp8_decompress_multi_seg_allloc(void *handle,
     bulk = (struct bulk_rdp8 *) handle;
     if (bulk == NULL)
     {
-        return 1;
+        return RDP8_ERROR_PARAM;
     }
     if ((flags & BULK_COMPRESSION_TYPE_MASK) != BULK_PACKET_COMPR_TYPE_RDP8)
     {
-        return 1;
+        return RDP8_ERROR_PARAM;
     }
     descriptor = GGET_UINT8(cdata, 0);
     if (descriptor == SEGMENTED_SINGLE)
@@ -447,9 +467,13 @@ rdp8_decompress_multi_seg_allloc(void *handle,
         lcdata = (const byte *) (cdata + 1);
         if (OutputFromSegment(bulk, lcdata, cdata_bytes - 1) != 0)
         {
-            return 1;
+            return RDP8_ERROR_SEGMENT;
         }
         *data = (char *) malloc(bulk->m_outputCount);
+        if (*data == NULL)
+        {
+            return RDP8_ERROR_ALLOC;
+        }
         *data_bytes = bulk->m_outputCount;
         memcpy(*data, bulk->m_outputBuffer, bulk->m_outputCount);
     }
@@ -459,6 +483,10 @@ rdp8_decompress_multi_seg_allloc(void *handle,
         uncompressedSize = GGET_UINT32(cdata, 3);
         segmentOffset = 7;
         pConcatenated = (byte *) malloc(uncompressedSize);
+        if (pConcatenated == NULL)
+        {
+            return RDP8_ERROR_ALLOC;
+        }
         *data = (char *) pConcatenated;
         *data_bytes = uncompressedSize;
         for (segmentNumber = 0; segmentNumber < segmentCount; segmentNumber++)
@@ -467,7 +495,7 @@ rdp8_decompress_multi_seg_allloc(void *handle,
             lcdata = (const byte *) (cdata + segmentOffset + 4);
             if (OutputFromSegment(bulk, lcdata, size) != 0)
             {
-                return 1;
+                return RDP8_ERROR_SEGMENT;
             }
             segmentOffset += 4 + size;
             memcpy(pConcatenated, bulk->m_outputBuffer, bulk->m_outputCount);
@@ -476,9 +504,9 @@ rdp8_decompress_multi_seg_allloc(void *handle,
     }
     else
     {
-        return 1;
+        return RDP8_ERROR_PARAM;
     }
-    return 0;
+    return RDP8_ERROR_NONE;
 }
 
 /*****************************************************************************/
@@ -489,5 +517,5 @@ rdp8_decompress_get_debug(void *handle, struct rdp8_decomp_debug *debug)
 
     bulk = (struct bulk_rdp8 *) handle;
     debug->history_index = bulk->m_historyIndex;
-    return 0;
+    return RDP8_ERROR_NONE;
 }

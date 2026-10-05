@@ -29,6 +29,8 @@ struct rdp8_decomp_debug
 void *
 rdp8_decompress_create(int flags);
 int
+rdp8_decompress_create_ex(int flags, void **handle);;
+int
 rdp8_decompress_destroy(void *handle);
 int
 rdp8_decompress(void *handle,
