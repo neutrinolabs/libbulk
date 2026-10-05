@@ -19,6 +19,14 @@
 #ifndef __BULK_COMMON_H
 #define __BULK_COMMON_H
 
+#define RDP8_ERROR_NONE         0
+#define RDP8_ERROR_NO_COMPRESS  1
+#define RDP8_ERROR_PARAM        2
+#define RDP8_ERROR_NOIMP        3
+#define RDP8_ERROR_ALLOC        4
+#define RDP8_ERROR_SEGMENT      5
+#define RDP8_ERROR_OTHER        16
+
 /* BULK_PACKET_COMPR_TYPE_8K and BULK_PACKET_COMPR_TYPE_64K are used for
    mppc_compress_create
    used in flags for mppc_compress

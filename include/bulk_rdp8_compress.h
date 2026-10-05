@@ -21,13 +21,6 @@
 
 #include <bulk_common.h>
 
-#define RDP8_ERROR_NONE         0
-#define RDP8_ERROR_NO_COMPRESS  1
-#define RDP8_ERROR_PARAM        2
-#define RDP8_ERROR_NOIMP        3
-#define RDP8_ERROR_ALLOC        4
-#define RDP8_ERROR_OTHER        16
-
 struct rdp8_stats
 {
    /* stats */
