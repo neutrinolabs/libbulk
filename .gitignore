@@ -26,4 +26,6 @@ NEWS
 *.o
 README
 stamp-h1
-
+tests/bulktest*
+m4/
+compile
