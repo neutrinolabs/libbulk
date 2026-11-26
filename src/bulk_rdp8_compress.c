@@ -20,8 +20,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
 
 #include <bulk_rdp8_compress.h>
+#include <bulk_rdp8_decompress.h>
 #include <bulk_common_private.h>
 
 #include "getset.h"
@@ -32,6 +36,63 @@
 #define MAX_UNENCODED_LITERALS  (1024 * 30)
 #define HIST_WRAP(pos)          ((unsigned int)(pos) % HIST_BUF_LEN)
 #define MAX_MULTI_BYTES         (16 * 1024 * 1024)
+
+/* if you want to dump the uncompressed and compressed data for debugging */
+#if 0
+
+#define SAVE_UDATA(_data, _data_bytes) save_udata(_data, _data_bytes)
+#define SAVE_CDATA(_data, _data_bytes) save_cdata(_data, _data_bytes)
+
+static int g_udata_index = 0;
+
+/******************************************************************************/
+static int
+save_udata(const char *udata, int udata_bytes)
+{
+    char filename[256];
+    int fd;
+    int rv;
+
+    snprintf(filename, 256, "/tmp/rdp8/udata%4.4X.bin", g_udata_index++);
+    fd = open(filename, O_CREAT | O_TRUNC | O_RDWR, S_IRUSR | S_IWUSR);
+    if (fd == -1)
+    {
+        return 1;
+    }
+    rv = write(fd, udata, udata_bytes) == udata_bytes;
+    close(fd);
+    return rv;
+}
+
+static int g_cdata_index = 0;
+
+/******************************************************************************/
+static int
+save_cdata(const char *cdata, int cdata_bytes)
+{
+    char filename[256];
+    int fd;
+    int rv;
+
+    snprintf(filename, 256, "/tmp/rdp8/cdata%4.4X.bin", g_cdata_index++);
+    fd = open(filename, O_CREAT | O_TRUNC | O_RDWR, S_IRUSR | S_IWUSR);
+    if (fd == -1)
+    {
+        return 1;
+    }
+    rv = write(fd, cdata, cdata_bytes) == cdata_bytes;
+    close(fd);
+    return rv;
+}
+
+#else
+
+#define SAVE_UDATA(_data, _data_bytes)
+#define SAVE_CDATA(_data, _data_bytes)
+
+static int g_udata_index = 0;
+
+#endif
 
 struct token
 {
@@ -375,6 +436,7 @@ struct bulk_rdp8
     unsigned char *output_buf;  /* contains compressed data */
     unsigned char output_buf_plus[HASH_TABLE_WIDTH * 2];
     struct rdp8_stats stats;
+    void *decomp;
 };
 
 /*****************************************************************************/
@@ -680,6 +742,7 @@ rdp8_compress_create_ex(int flags, void **handle)
 {
     struct bulk_rdp8 *bulk;
 
+    printf("hello\n");
     if ((flags & BULK_COMPRESSION_TYPE_MASK) != BULK_PACKET_COMPR_TYPE_RDP8)
     {
         return RDP8_ERROR_PARAM;
@@ -691,6 +754,7 @@ rdp8_compress_create_ex(int flags, void **handle)
     }
     bulk->output_buf = bulk->output_buf_plus + 64;
     *handle = bulk;
+    bulk->decomp = rdp8_decompress_create(BULK_PACKET_COMPR_TYPE_RDP8);
     return RDP8_ERROR_NONE;
 }
 
@@ -705,6 +769,7 @@ rdp8_compress_destroy(void *handle)
     {
         return 0;
     }
+    rdp8_decompress_destroy(bulk->decomp);
     free(bulk);
     return 0;
 }
@@ -763,6 +828,34 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
 
     if (data_bytes < 3)
     {
+        bulk->hist_index = HIST_WRAP(bulk->hist_index + data_bytes);
+
+        SAVE_UDATA(data, data_bytes);
+        SAVE_CDATA(NULL, 0);
+        char *ldata;
+        int ldata_bytes;
+        int lerror;
+        int lmatch;
+        lerror = rdp8_decompress(bulk->decomp, data, data_bytes, BULK_PACKET_COMPR_TYPE_RDP8, &ldata, &ldata_bytes);
+        lmatch = ldata_bytes == data_bytes;
+        if (lmatch)
+        {
+            lmatch = memcmp(data, ldata, data_bytes) == 0;
+        }
+        if (!lmatch)
+        {
+            printf("0 lerror %d cdata_bytes %d udata_bytes %d\n", lerror, data_bytes, ldata_bytes);
+        }
+
+        // make sure internals stay in sync
+        struct rdp8_decomp_debug debug1;
+        rdp8_decompress_get_debug(bulk->decomp, &debug1);
+        if (bulk->hist_index != debug1.history_index)
+        {
+            printf("0 history_index %d %d\n", bulk->hist_index, debug1.history_index);
+        }
+
+
         return RDP8_ERROR_NO_COMPRESS;
     }
 
@@ -775,6 +868,32 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
         bulk->hist_index = HIST_WRAP(bulk->hist_index + data_bytes);
         bulk->stats.nbytes += data_bytes;
         bulk->stats.nbytes_count++;
+
+        SAVE_UDATA(data, data_bytes);
+        SAVE_CDATA(NULL, 0);
+        char *ldata;
+        int ldata_bytes;
+        int lerror;
+        int lmatch;
+        lerror = rdp8_decompress(bulk->decomp, data, data_bytes, BULK_PACKET_COMPR_TYPE_RDP8, &ldata, &ldata_bytes);
+        lmatch = ldata_bytes == data_bytes;
+        if (lmatch)
+        {
+            lmatch = memcmp(data, ldata, data_bytes) == 0;
+        }
+        if (!lmatch)
+        {
+            printf("1 lerror %d cdata_bytes %d udata_bytes %d\n", lerror, data_bytes, ldata_bytes);
+        }
+
+        // make sure internals stay in sync
+        struct rdp8_decomp_debug debug1;
+        rdp8_decompress_get_debug(bulk->decomp, &debug1);
+        if (bulk->hist_index != debug1.history_index)
+        {
+            printf("1 history_index %d %d\n", bulk->hist_index, debug1.history_index);
+        }
+
         return RDP8_ERROR_NO_COMPRESS;
     }
 
@@ -895,6 +1014,31 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     {
         bulk->stats.nbytes += data_bytes;
         bulk->stats.nbytes_count++;
+
+        SAVE_UDATA(data, data_bytes);
+        SAVE_CDATA(NULL, 0);
+        char *ldata;
+        int ldata_bytes;
+        int lerror;
+        int lmatch;
+        lerror = rdp8_decompress(bulk->decomp, data, data_bytes, BULK_PACKET_COMPR_TYPE_RDP8, &ldata, &ldata_bytes);
+        lmatch = ldata_bytes == data_bytes;
+        if (lmatch)
+        {
+            lmatch = memcmp(data, ldata, data_bytes) == 0;
+        }
+        if (!lmatch)
+        {
+            printf("2 lerror %d cdata_bytes %d udata_bytes %d\n", lerror, data_bytes, ldata_bytes);
+        }
+        // make sure internals stay in sync
+        struct rdp8_decomp_debug debug1;
+        rdp8_decompress_get_debug(bulk->decomp, &debug1);
+        if (bulk->hist_index != debug1.history_index)
+        {
+            printf("2 history_index %d %d\n", bulk->hist_index, debug1.history_index);
+        }
+
         return RDP8_ERROR_NO_COMPRESS;
     }
     *cdata = (char *) (bulk->output_buf);
@@ -903,6 +1047,34 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     bulk->stats.ubytes += data_bytes;
     bulk->stats.cbytes += bw.index;
     bulk->stats.cbytes_count++;
+
+    {
+        SAVE_UDATA(data, data_bytes);
+        SAVE_CDATA(*cdata, *cdata_bytes);
+        char *ldata;
+        int ldata_bytes;
+        int lerror;
+        int lmatch;
+        lerror = rdp8_decompress(bulk->decomp, *cdata, *cdata_bytes, *flags, &ldata, &ldata_bytes);
+        lmatch = ldata_bytes == data_bytes;
+        if (lmatch)
+        {
+            lmatch = memcmp(data, ldata, data_bytes) == 0;
+        }
+        if (!lmatch)
+        {
+            printf("3 lerror %d cdata_bytes %d udata_bytes %d original udata_bytes %d hist_index %d g_udata_index %d\n",
+                   lerror, *cdata_bytes, ldata_bytes, data_bytes, bulk->hist_index, g_udata_index);
+        }
+        // make sure internals stay in sync
+        struct rdp8_decomp_debug debug1;
+        rdp8_decompress_get_debug(bulk->decomp, &debug1);
+        if (bulk->hist_index != debug1.history_index)
+        {
+            printf("3 history_index %d %d\n", bulk->hist_index, debug1.history_index);
+        }
+    }
+
     return RDP8_ERROR_NONE;
 }
 
