@@ -761,20 +761,15 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     hist_buf_copy(bulk, hist_start,
                   (const unsigned char *) data, data_bytes);
 
-    if (data_bytes < 3)
-    {
-        bulk->hist_index = HIST_WRAP(bulk->hist_index + data_bytes);
-        bulk->stats.nbytes += data_bytes;
-        bulk->stats.nbytes_count++;
-        return RDP8_ERROR_NO_COMPRESS;
-    }
-
-    if ((lflags & BULK_PACKET_COMPRESSED) == 0)
+    if ((data_bytes < 3) || (lflags & BULK_PACKET_COMPRESSED) == 0)
     {
         /* even if we are not compressing this chunk, we still need to
-           copy the data to the history buffer(hist_buf_copy()) and update
-           the hash table */
-        update_hash_table(bulk, hist_start, data_bytes - 2);
+           copy the data to the history buffer, already done,
+           and update hash table, index, and stats */
+        if (data_bytes > 2)
+        {
+            update_hash_table(bulk, hist_start, data_bytes - 2);
+        }
         bulk->hist_index = HIST_WRAP(bulk->hist_index + data_bytes);
         bulk->stats.nbytes += data_bytes;
         bulk->stats.nbytes_count++;
