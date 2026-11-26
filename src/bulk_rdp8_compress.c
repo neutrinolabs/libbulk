@@ -730,15 +730,11 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     int lflags;
 
     if ((handle == NULL) || (cdata == NULL) || (cdata_bytes == NULL) ||
-        (flags == NULL))
+        (flags == NULL) || (data == NULL))
     {
         return RDP8_ERROR_PARAM;
     }
-    if ((data == NULL) || (data_bytes < 3))
-    {
-        return RDP8_ERROR_PARAM;
-    }
-    if (data_bytes >= HASH_TABLE_WIDTH)
+    if ((data_bytes < 1) || (data_bytes >= HASH_TABLE_WIDTH))
     {
         return RDP8_ERROR_PARAM;
     }
@@ -764,6 +760,11 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     /* copy source data to hist buf at current position (circular) */
     hist_buf_copy(bulk, hist_start,
                   (const unsigned char *) data, data_bytes);
+
+    if (data_bytes < 3)
+    {
+        return RDP8_ERROR_NO_COMPRESS;
+    }
 
     if ((lflags & BULK_PACKET_COMPRESSED) == 0)
     {
@@ -992,27 +993,16 @@ rdp8_compress_multi_seg_allloc(void *handle,
         output_index += 4;
         for (index = 0; index < num_segments; index++)
         {
-            if (ldata_bytes < 3)
-            {
-                /* should not happen */
-                free(output_buf);
-                return RDP8_ERROR_OTHER;
-            }
             lcdata = NULL;
             lcdata_bytes = 0;
             segment_size = ldata_bytes;
             if (segment_size > segment_max)
             {
                 segment_size = segment_max;
-                if (ldata_bytes - segment_size < 3)
-                {
-                    /* so we don't end up with the last segment < 3 */
-                    segment_size -= 4;
-                }
             }
             lflags = flags;
             error = rdp8_compress(handle, &lcdata, &lcdata_bytes, &lflags,
-                                ldata, segment_size);
+                                  ldata, segment_size);
             if (error == RDP8_ERROR_NONE)
             {
                 GSET_UINT32(output_buf, output_index, 1 + lcdata_bytes);
