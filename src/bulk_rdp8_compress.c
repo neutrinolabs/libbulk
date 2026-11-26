@@ -764,6 +764,8 @@ rdp8_compress(void *handle, char **cdata, int *cdata_bytes, int *flags,
     if (data_bytes < 3)
     {
         bulk->hist_index = HIST_WRAP(bulk->hist_index + data_bytes);
+        bulk->stats.nbytes += data_bytes;
+        bulk->stats.nbytes_count++;
         return RDP8_ERROR_NO_COMPRESS;
     }
 
